@@ -1,4 +1,4 @@
-from qt_compat import QtGui, QtCore
+from qt_compat import QtGui, QtCore, Qt
 import ujson
 import sys
 import os
@@ -18,7 +18,7 @@ except ImportError:
         FigureCanvasQTAgg as FigureCanvas,
         NavigationToolbar2QT as NavigationToolbar)
 
-from matplotlib.backends import qt_compat
+
 import shutil
 import webbrowser
 import data_io
@@ -29,7 +29,6 @@ from scalable_mw import Ui_MainWindow
 
 from text_file_viewer import Ui_Dialog
 
-use_pyside = qt_compat.QT_API == qt_compat.QT_API_PYSIDE
 
 if hasattr(sys, 'frozen') and sys.platform == 'darwin':
     print("Detected a frozen application and extracting the appropriate file directory format")
@@ -42,9 +41,6 @@ user_data_directory = appdirs.user_data_dir("CarbonXS_GUI")
 
 
 
-if use_pyside:
-    from PySide.QtCore import *
-    from PySide.QtGui import *
 
 from carbonxs_core import CarbonXSModel
 from carbonxs_fit import CarbonXSFit
@@ -755,7 +751,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.canvas = FigureCanvas(fig)
         self.canvas.setMinimumHeight(100)
 
-        self.mplvl.addWidget(self.canvas, 2, 0)
+        self.mplvl.addWidget(self.canvas)
         self.canvas.draw()
 
         self.mpl_toolbar = NavigationToolbar(self.canvas, self)
@@ -875,17 +871,17 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             self.menu_exit.setShortcut(QtGui.QKeySequence.Quit)
 
         self.open_pattern_button.setToolTip(self.open_pattern_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(QtGui.QKeySequence.Open),
-                                                                                                                 format=QKeySequence.NativeText))
+                                                                                                                 format=QtGui.QKeySequence.NativeText))
         self.calculate_pattern_button.setToolTip(self.calculate_pattern_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL+Qt.Key_R),
-                                                                                                                           format=QKeySequence.NativeText))
+                                                                                                                           format=QtGui.QKeySequence.NativeText))
         self.fit_pattern_button.setToolTip(self.fit_pattern_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL+Qt.SHIFT+Qt.Key_R),
-                                                                                                                           format=QKeySequence.NativeText))
+                                                                                                                           format=QtGui.QKeySequence.NativeText))
         self.abort_fit_button.setToolTip(self.abort_fit_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL+Qt.Key_D),
-                                                                                                             format=QKeySequence.NativeText))
+                                                                                                             format=QtGui.QKeySequence.NativeText))
         self.back_button.setToolTip(self.back_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(QtGui.QKeySequence.Back),
-                                                                                                         format=QKeySequence.NativeText))
+                                                                                                         format=QtGui.QKeySequence.NativeText))
         self.forward_button.setToolTip(self.forward_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(QtGui.QKeySequence.Forward),
-                                                                                                    format=QKeySequence.NativeText))
+                                                                                                    format=QtGui.QKeySequence.NativeText))
 
 
     def plot_difference(self):
