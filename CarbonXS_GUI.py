@@ -1219,10 +1219,10 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.ax = self.fig.add_subplot(111)
 
         if len(self.x_data) > 0:
-            print(f"Plotting source data: {len(self.x_data)} points")
+            print(f"Plotting source data: {len(self.x_data)} points, x range: [{min(self.x_data):.2f}, {max(self.x_data):.2f}]")
             self.ax.plot(self.x_data, self.y_data, label="Source", linewidth = 2, color=source_color)
         if len(self.x_fit_data) > 0:
-            print(f"Plotting fit data: {len(self.x_fit_data)} points")
+            print(f"Plotting fit data: {len(self.x_fit_data)} points, x range: [{min(self.x_fit_data):.2f}, {max(self.x_fit_data):.2f}], y range: [{min(self.y_fit_data):.2e}, {max(self.y_fit_data):.2e}]")
         
             background = self.calculate_background(self.x_fit_data)
 
@@ -1247,10 +1247,15 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.ax.legend(fontsize=14, frameon=True)
         self.ax.grid(True)
 
-        if self.lock_y_axis.checkState():
-            self.ax.set_ylim(self.y_limit)
+        # Only apply saved axis limits if they are valid
+        if self.lock_y_axis.checkState() and hasattr(self, 'y_limit'):
+            y_min, y_max = self.y_limit
+            if y_min > 0 and y_max > y_min:  # Valid for log scale
+                self.ax.set_ylim(self.y_limit)
+            else:
+                print(f"Ignoring invalid y_limit: {self.y_limit}")
 
-        if self.lock_x_axis.checkState():
+        if self.lock_x_axis.checkState() and hasattr(self, 'x_limit'):
             self.ax.set_xlim(self.x_limit)
 
         self.canvas.draw()
