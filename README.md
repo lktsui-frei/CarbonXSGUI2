@@ -20,7 +20,7 @@ conda create -n carbon_xs_gui python=3.9
 conda activate carbon_xs_gui
 
 # Install dependencies
-conda install -c conda-forge numpy scipy matplotlib ujson appdirs pyside2
+conda install -c conda-forge numpy scipy matplotlib ujson appdirs pyside6
 
 # Or install from requirements.txt (after activating conda env)
 pip install -r requirements.txt
@@ -46,7 +46,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-**Note:** On some Linux systems, PySide2 may have system library dependencies. If you encounter import errors with PySide2, using conda is recommended as it handles these dependencies automatically.
+**Note:** On some Linux systems, older Qt versions may have system library dependencies. If you encounter any import errors, using conda is recommended as it handles these dependencies automatically.
 
 ### Verify Installation
 
@@ -83,11 +83,11 @@ Example diffraction data and parameter files are provided in the `examples/` dir
 
 ## Requirements
 
-- Python 3.7+
-- NumPy < 2.0 (for PySide2 compatibility)
+- Python 3.9+
+- NumPy < 2.0 (for PySide6 compatibility)
 - SciPy >= 1.4.1
-- Matplotlib >= 3.1.3
-- PySide2 >= 5.15.0
+- Matplotlib >= 3.6.0
+- PySide6 >= 6.0.0
 - ujson >= 1.35
 - appdirs >= 1.4.3
 

@@ -1,10 +1,10 @@
 """
-Qt compatibility layer for PySide2.
+Qt compatibility layer for PySide6.
 Provides a combined QtGui namespace that includes both QtGui and QtWidgets
-for compatibility with PySide1-style code.
+for compatibility with older PySide-style code.
 """
 
-from PySide2 import QtGui as _QtGui, QtCore, QtWidgets
+from PySide6 import QtGui as _QtGui, QtCore, QtWidgets
 
 # Create a combined QtGui module that includes QtWidgets
 class CombinedQtGui:
@@ -23,7 +23,7 @@ for name in dir(QtWidgets):
         setattr(QtGui, name, getattr(QtWidgets, name))
 
 # Add compatibility for PySide1 code that uses UnicodeUTF8
-# In Qt5/PySide2, this encoding parameter is ignored (always UTF8)
+# In Qt5+, this encoding parameter was removed (always UTF8)
 if hasattr(QtGui, 'QApplication') and not hasattr(QtGui.QApplication, 'UnicodeUTF8'):
     QtGui.QApplication.UnicodeUTF8 = -1  # Dummy value for compatibility
 

@@ -3,8 +3,8 @@ import ujson
 import sys
 import os
 
-# Force matplotlib to use PySide2
-os.environ['QT_API'] = 'pyside2'
+# Force matplotlib to use PySide6
+os.environ['QT_API'] = 'pyside6'
 
 import numpy as np
 from matplotlib.figure import Figure

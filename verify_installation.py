@@ -29,22 +29,22 @@ success &= check_import("matplotlib")
 success &= check_import("ujson")
 success &= check_import("appdirs")
 
-print("\nChecking Qt (PySide2)...")
+print("\nChecking Qt (PySide6)...")
 pyside_ok = True
 try:
-    from PySide2 import QtGui, QtCore, QtWidgets
-    print("✓ PySide2 - basic import")
+    from PySide6 import QtGui, QtCore, QtWidgets
+    print("✓ PySide6 - basic import")
 except ImportError as e:
-    print(f"✗ PySide2 - basic import: {e}")
+    print(f"✗ PySide6 - basic import: {e}")
     pyside_ok = False
     success = False
 
 if pyside_ok:
     try:
         from qt_compat import QtGui, QtCore, Qt
-        print("✓ PySide2 - qt_compat module")
+        print("✓ PySide6 - qt_compat module")
     except Exception as e:
-        print(f"✗ PySide2 - qt_compat module: {e}")
+        print(f"✗ PySide6 - qt_compat module: {e}")
         success = False
 
 print("\nChecking CarbonXS modules...")
@@ -60,6 +60,6 @@ else:
     print("\nTroubleshooting:")
     print("1. Make sure you've activated your virtual environment")
     print("2. Run: pip install -r requirements.txt")
-    print("3. If using conda: conda install -c conda-forge pyside2")
+    print("3. If using conda: conda install -c conda-forge pyside6")
     print("4. Check the README.md for installation instructions")
     sys.exit(1)
