@@ -1219,9 +1219,10 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.ax = self.fig.add_subplot(111)
 
         if len(self.x_data) > 0:
+            print(f"Plotting source data: {len(self.x_data)} points")
             self.ax.plot(self.x_data, self.y_data, label="Source", linewidth = 2, color=source_color)
         if len(self.x_fit_data) > 0:
-
+            print(f"Plotting fit data: {len(self.x_fit_data)} points")
         
             background = self.calculate_background(self.x_fit_data)
 
@@ -1962,16 +1963,17 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.worker_thread = None
         
         if result['mode'] == 'calculate':
-            self.x_fit_data = result['x']
-            self.y_fit_data = result['y_calc']
-            print("Calculation finished.")
+            self.x_fit_data = list(result['x'])
+            self.y_fit_data = list(result['y_calc'])
+            print(f"Calculation finished. Data points: {len(self.x_fit_data)}")
             
         elif result['mode'] == 'fit':
-            self.x_fit_data = result['x']
-            self.y_fit_data = result['y_calc']
+            self.x_fit_data = list(result['x'])
+            self.y_fit_data = list(result['y_calc'])
             final_params = result['final_params']
             
-            print("Fit finished. Success: %s, Message: %s" % (result['success'], result['message']))
+            print(f"Fit finished. Success: {result['success']}, Message: {result['message']}")
+            print(f"Data points: {len(self.x_fit_data)}")
             
             # Update GUI parameters
             # Need to map back to parameter list
