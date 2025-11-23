@@ -1130,28 +1130,32 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
             self.plot_loaded_data()
 
-    def plot_fit_results(self):
+    def plot_fit_results(self, from_file=False):
         """
-        Load the most recently generated carbon.dat file and plot the fit results
+        Plot the fit results, either from the file or from already-loaded data
 
+        :param from_file: If True, reload data from carbon.dat file; otherwise use current data
         :return:
         """
-        pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
+        if from_file:
+            pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
 
-        self.prev_x_fit = self.x_fit_data
-        self.prev_y_fit = self.y_fit_data
+            self.prev_x_fit = self.x_fit_data
+            self.prev_y_fit = self.y_fit_data
 
-        self.x_fit_data = []
-        self.y_fit_data = []
+            self.x_fit_data = []
+            self.y_fit_data = []
 
-        pattern_file = open(pattern_filename, 'r')
+            try:
+                with open(pattern_filename, 'r') as pattern_file:
+                    for line in pattern_file.readlines():
+                        data_elements = line.split()
+                        self.x_fit_data.append(float(data_elements[0]))
+                        self.y_fit_data.append(float(data_elements[2]))
+            except FileNotFoundError:
+                print(f"Warning: {pattern_filename} not found, using current data")
 
-        for line in pattern_file.readlines():
-            data_elements = line.split()
-            self.x_fit_data.append(float(data_elements[0]))
-            self.y_fit_data.append(float(data_elements[2]))
-
-        # colors = sns.color_palette('Set2', 2)
+        # Plot using current data (either just loaded from file or set by worker thread)
         self.plot_loaded_data()
 
     def calculate_background(self, x_array):
