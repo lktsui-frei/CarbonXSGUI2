@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.png
+carbonxs/carbonxs_app
+carbonxs/*.dat
+carbonxs/*.inp
+carbonxs/*.out
+carbonxs/SCAN1.DAT
