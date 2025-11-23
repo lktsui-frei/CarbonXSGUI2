@@ -6,6 +6,26 @@ A Python-based GUI application for analyzing carbon X-ray diffraction patterns u
 
 CarbonXS has been fully ported from Fortran to pure Python, using NumPy and SciPy for numerical computations. The application provides a graphical interface for loading diffraction data, setting parameters, and performing fits to extract structural information about carbon materials.
 
+## Quick Start
+
+The easiest way to get started:
+
+```bash
+./run.sh
+```
+
+This will automatically:
+1. Create a conda environment (if needed)
+2. Install all dependencies
+3. Verify the installation
+4. Launch the GUI
+
+After first-time setup, you can use the faster launch script:
+
+```bash
+./launch.sh
+```
+
 ## Installation
 
 ### Recommended: Conda Environment
