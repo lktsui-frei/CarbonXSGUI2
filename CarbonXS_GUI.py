@@ -327,9 +327,17 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.worker_thread = None
         
         self.pattern_calc_flag = False
-        self.abort_flag = False
+        self.abort_flag        self.show()
+        
+        # Initialize axis limits to None (will be set on first plot)
+        self.x_limit = None
+        self.y_limit = None
+        
+        # Uncheck lock axis checkboxes by default to avoid using stale limits
+        self.lock_x_axis.setChecked(False)
+        self.lock_y_axis.setChecked(False)
 
-        self.init_menubar_osx()
+        self.check_if_programs_are_available()
         self.assignWidgets()
         self.setWindowTitle("CarbonXS GUI v"+version)
         self.showMaximized()
