@@ -327,7 +327,10 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.worker_thread = None
         
         self.pattern_calc_flag = False
-        self.abort_flag        self.show()
+        self.abort_flag = False
+
+        self.init_menubar_osx()
+        self.show()
         
         # Initialize axis limits to None (will be set on first plot)
         self.x_limit = None
