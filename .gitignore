@@ -6,3 +6,4 @@ carbonxs/*.dat
 carbonxs/*.inp
 carbonxs/*.out
 carbonxs/SCAN1.DAT
+test_output.txt
