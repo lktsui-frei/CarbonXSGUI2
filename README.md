@@ -1,37 +1,122 @@
-# CarbonXS_GUI
+# CarbonXS GUI
 
-[![GitHub version](https://badge.fury.io/gh/lktsui%2Fcarbon_xs_gui.svg)](https://badge.fury.io/gh/lktsui%2Fcarbon_xs_gui) [![Github All Releases](https://img.shields.io/github/downloads/lktsui/carbon_xs_gui/total.svg)](https://github.com/lktsui/carbon_xs_gui) [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](http://www.gnu.org/licenses/gpl-3.0)
+A Python-based GUI application for analyzing carbon X-ray diffraction patterns using least squares fitting.
 
+## Overview
 
-Last Release: November 23, 2025
+CarbonXS has been fully ported from Fortran to pure Python, using NumPy and SciPy for numerical computations. The application provides a graphical interface for loading diffraction data, setting parameters, and performing fits to extract structural information about carbon materials.
 
-Developed by Lok-kun Tsui (lktsui@unm.edu)
+## Installation
 
-Original CarbonXS (Fortran Program) by Hang Shi, J.N. Reimers, and J.R. Dahn.
-Ported to Python by Lok-kun Tsui.
+### Recommended: Conda Environment
 
-Center for Micro-Engineered Materials | University of New Mexico
+The easiest way to get started is to use conda:
 
-CarbonXS_GUI is a GUI front-end for CarbonXS, a Python-based X-ray diffraction pattern fitting and calculator for carbon materials.
+```bash
+# Create a new conda environment
+conda create -n carbon_xs_gui python=3.9
 
-**Documentation**: [Click here](http://lktsui.github.io/carbon_xs_gui)
+# Activate the environment
+conda activate carbon_xs_gui
 
-**Dependencies:**
-* [Python 3.6+](https://www.python.org/)
-* [PySide2](https://wiki.qt.io/Qt_for_Python) or [PyQt5](https://pypi.org/project/PyQt5/)
-* [Numpy](http://www.numpy.org/)
-* [SciPy](https://www.scipy.org/)
-* [Matplotlib](https://matplotlib.org/)
-* [uJSON](https://pypi.python.org/pypi/ujson)
-* [appdirs](https://github.com/ActiveState/appdirs)
+# Install dependencies
+conda install -c conda-forge numpy scipy matplotlib ujson appdirs pyside2
 
-**Installation:**
-* Clone the repository or download the source code.
-* Install dependencies: `pip install -r requirements.txt`
-* Run the application: `python CarbonXS_GUI.py`
+# Or install from requirements.txt (after activating conda env)
+pip install -r requirements.txt
+```
 
-**Citation:**
-Please cite the following paper for this program:
-* Tsui, L.; Garzon, F. J. Appl. Crystallogr. 2017, 50, 1830–1833.
-* DOI: 10.1107/S1600576717015035
+### Alternative: Virtual Environment (venv)
 
+If you prefer to use venv instead of conda:
+
+```bash
+# Create virtual environment
+python3 -m venv venv
+
+# Activate it
+source venv/bin/activate  # On Linux/Mac
+# OR
+venv\Scripts\activate  # On Windows
+
+# Upgrade pip
+pip install --upgrade pip
+
+# Install requirements
+pip install -r requirements.txt
+```
+
+**Note:** On some Linux systems, PySide2 may have system library dependencies. If you encounter import errors with PySide2, using conda is recommended as it handles these dependencies automatically.
+
+### Verify Installation
+
+After installing dependencies, run:
+
+```bash
+python verify_installation.py
+```
+
+This will check that all required packages are installed and importable.
+
+## Running the Application
+
+```bash
+python CarbonXS_GUI.py
+```
+
+## Example Data
+
+Example diffraction data and parameter files are provided in the `examples/` directory:
+
+- `examples/crystalline_carbon.dat` - Example XRD data
+- `examples/CARBON.INP` - Example parameter file
+
+## Features
+
+- Pure Python implementation (no Fortran dependencies)
+- Graphical user interface for parameter adjustment
+- Real-time pattern calculation
+- Least squares fitting using scipy.optimize
+- Support for 1-layer and 2-layer carbon models
+- Import/export parameter files
+- Plot comparison between observed and calculated patterns
+
+## Requirements
+
+- Python 3.7+
+- NumPy < 2.0 (for PySide2 compatibility)
+- SciPy >= 1.4.1
+- Matplotlib >= 3.1.3
+- PySide2 >= 5.15.0
+- ujson >= 1.35
+- appdirs >= 1.4.3
+
+## Development
+
+### Verification Scripts
+
+Two verification scripts are provided to test the Python port against the original Fortran implementation:
+
+- `verify_port.py` - Verifies core calculation logic
+- `verify_fit.py` - Verifies fitting algorithm
+
+### Project Structure
+
+```
+carbon_xs_gui/
+├── CarbonXS_GUI.py          # Main GUI application
+├── carbonxs_core.py         # Core calculation engine (ported from Fortran)
+├── carbonxs_fit.py          # Fitting engine using scipy
+├── qt_compat.py             # PySide2 compatibility layer
+├── scalable_mw.py           # Auto-generated Qt UI file
+├── text_file_viewer.py      # Auto-generated Qt dialog
+├── data_io.py               # Data import/export utilities
+├── requirements.txt         # Python dependencies
+├── examples/                # Example data files
+├── carbonxs/                # Original Fortran code (for reference)
+└── docs/                    # Documentation
+```
+
+## License
+
+See LICENSE file for details.
