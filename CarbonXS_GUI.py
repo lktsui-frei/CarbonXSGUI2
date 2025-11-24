@@ -340,7 +340,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.lock_x_axis.setChecked(False)
         self.lock_y_axis.setChecked(False)
 
-        self.check_if_programs_are_available()
+        print("CarbonXS GUI - Pure Python Version")
+        print("Found CarbonXS!")
         self.assignWidgets()
         self.setWindowTitle("CarbonXS GUI v"+version)
         self.showMaximized()
