@@ -1259,16 +1259,25 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.ax.legend(fontsize=14, frameon=True)
         self.ax.grid(True)
 
-        # Only apply saved axis limits if they are valid
-        if self.lock_y_axis.checkState() and hasattr(self, 'y_limit'):
+        # Handle axis limits: only apply saved limits if lock is enabled AND limits are valid
+        # Otherwise, let matplotlib auto-scale to fit the data
+        if self.lock_y_axis.checkState() and hasattr(self, 'y_limit') and self.y_limit is not None:
             y_min, y_max = self.y_limit
             if y_min > 0 and y_max > y_min:  # Valid for log scale
                 self.ax.set_ylim(self.y_limit)
             else:
                 print(f"Ignoring invalid y_limit: {self.y_limit}")
+                # Let matplotlib auto-scale
+                self.ax.autoscale(axis='y')
+        else:
+            # Auto-scale y-axis to fit data
+            self.ax.autoscale(axis='y')
 
-        if self.lock_x_axis.checkState() and hasattr(self, 'x_limit'):
+        if self.lock_x_axis.checkState() and hasattr(self, 'x_limit') and self.x_limit is not None:
             self.ax.set_xlim(self.x_limit)
+        else:
+            # Auto-scale x-axis to fit data
+            self.ax.autoscale(axis='x')
 
         self.canvas.draw()
 
