@@ -1070,7 +1070,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 loadtxt_dialog.load_contents(full_path)
                 loadtxt_dialog.header_lines.setValue(self.last_header_lines_used)
                 loadtxt_dialog.separator_selector.setCurrentIndex(self.last_separator_used)
-                header_dialog_accepted = loadtxt_dialog.exec_()
+                header_dialog_accepted = loadtxt_dialog.exec()
                 header_lines = 0
 
                 if header_dialog_accepted:
@@ -2436,7 +2436,7 @@ def main():
 
     ex.data_init()
 
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 
