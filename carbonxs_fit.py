@@ -20,6 +20,8 @@ class CarbonXSFit:
         current_params = full_params.copy()
         current_params[refine_mask] = refined_params
         
+        print(f"DEBUG: Residuals called. Refined params: {refined_params}")
+        
         # Calculate model intensity
         # Note: model.all_inten expects parameters in the "calculation" scale if n_layers=2
         # But here we are dealing with "user-facing" parameters usually.
@@ -69,7 +71,7 @@ class CarbonXSFit:
             x0, 
             args=(initial_params, refine_mask, s_array, y_data, weights),
             max_nfev=max_nfev,
-            verbose=1
+            verbose=0  # Set to 0 to reduce console output
         )
         
         # Construct final parameters

@@ -102,7 +102,11 @@ class WorkerThread(QtCore.QThread):
                 x_obs = self.data[0]
                 y_obs = self.data[1]
                 
-                final_params, res = fitter.fit(self.params, self.refine_flags, x_obs, y_obs)
+                # Get max function evaluations from iterations setting
+                max_nfev = int(self.settings.get('iterations', 100)) * 100  # Scale by 100 for reasonable limit
+                print(f"DEBUG: Starting fit with max_nfev={max_nfev}")
+                
+                final_params, res = fitter.fit(self.params, self.refine_flags, x_obs, y_obs, max_nfev=max_nfev)
                 
                 # Recalculate pattern with final params
                 model.set_parameters(final_params, model.n_layers_model)
@@ -715,7 +719,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
 
     @QtCore.Slot(str)
-    def on_stream_message(self, message):
+    def handle_stream_message(self, message):
         """
         Method for reading print messages and error messages that are sent to the console
         :param message:
@@ -871,24 +875,33 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         self.menu_open_xrd_pattern.setShortcut(QtGui.QKeySequence.Open)
         self.menu_tutorial.setShortcut(QtGui.QKeySequence.HelpContents)
-        self.menu_calculate_pattern.setShortcut(Qt.CTRL+Qt.Key_R)
-        self.menu_start_fit.setShortcut(Qt.CTRL+Qt.SHIFT+Qt.Key_R)
-        self.menu_abort_fit.setShortcut(Qt.CTRL+Qt.Key_D)
+        self.menu_calculate_pattern.setShortcut(Qt.CTRL|Qt.Key_R)
+        self.menu_start_fit.setShortcut(Qt.CTRL|Qt.SHIFT|Qt.Key_R)
+        self.menu_abort_fit.setShortcut(Qt.CTRL|Qt.Key_D)
+
+        self.menu_calculate_pattern.setStatusTip('Calculate Pattern')
+        self.menu_start_fit.setStatusTip('Start Fit Process')
+        self.menu_abort_fit.setStatusTip('Abort Fit Process')
+
+        self.menu_calculate_pattern.triggered.connect(self.calculate_pattern)
+        self.menu_start_fit.triggered.connect(self.call_fit_program)
+        self.menu_abort_fit.triggered.connect(self.abort_fit_process)
+
         self.back_button.setShortcut(QtGui.QKeySequence.Back)
         self.forward_button.setShortcut(QtGui.QKeySequence.Forward)
 
         if 'win32' in sys.platform:
-            self.menu_exit.setShortcut(Qt.ALT+Qt.Key_F4)
+            self.menu_exit.setShortcut(Qt.ALT|Qt.Key_F4)
         else:
             self.menu_exit.setShortcut(QtGui.QKeySequence.Quit)
 
         self.open_pattern_button.setToolTip(self.open_pattern_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(QtGui.QKeySequence.Open),
                                                                                                                  format=QtGui.QKeySequence.NativeText))
-        self.calculate_pattern_button.setToolTip(self.calculate_pattern_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL+Qt.Key_R),
+        self.calculate_pattern_button.setToolTip(self.calculate_pattern_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL|Qt.Key_R),
                                                                                                                            format=QtGui.QKeySequence.NativeText))
-        self.fit_pattern_button.setToolTip(self.fit_pattern_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL+Qt.SHIFT+Qt.Key_R),
+        self.fit_pattern_button.setToolTip(self.fit_pattern_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL|Qt.SHIFT|Qt.Key_R),
                                                                                                                            format=QtGui.QKeySequence.NativeText))
-        self.abort_fit_button.setToolTip(self.abort_fit_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL+Qt.Key_D),
+        self.abort_fit_button.setToolTip(self.abort_fit_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(Qt.CTRL|Qt.Key_D),
                                                                                                              format=QtGui.QKeySequence.NativeText))
         self.back_button.setToolTip(self.back_button.toolTip()+" (%s)"%QtGui.QKeySequence.toString(QtGui.QKeySequence(QtGui.QKeySequence.Back),
                                                                                                          format=QtGui.QKeySequence.NativeText))
@@ -2079,6 +2092,11 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.append_to_buffer = True
         
         # Start thread
+        # Start thread
+        if hasattr(self, 'worker_thread') and self.worker_thread is not None and self.worker_thread.isRunning():
+            print("Worker thread is already running!")
+            return
+
         self.worker_thread = WorkerThread('fit', params, settings, data, refine_flags)
         self.worker_thread.finished_signal.connect(self.on_worker_finished)
         self.worker_thread.error_signal.connect(self.on_worker_error)
@@ -2114,6 +2132,11 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             data = None
             
         # Start thread
+        # Start thread
+        if hasattr(self, 'worker_thread') and self.worker_thread is not None and self.worker_thread.isRunning():
+            print("Worker thread is already running!")
+            return
+
         self.worker_thread = WorkerThread('calculate', params, settings, data)
         self.worker_thread.finished_signal.connect(self.on_worker_finished)
         self.worker_thread.error_signal.connect(self.on_worker_error)
@@ -2386,8 +2409,14 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
     #
 
     def closeEvent(self, event):
+        if hasattr(self, 'worker_thread') and self.worker_thread is not None and self.worker_thread.isRunning():
+            print("Stopping worker thread...")
+            self.worker_thread.terminate()
+            self.worker_thread.wait()
+            
         print("Closing program")
         self.write_config()
+        event.accept()
 
 
 def main():
@@ -2400,7 +2429,7 @@ def main():
     ex = MainWindow(version)
 
     console_stream = ConsoleStream()
-    console_stream.message.connect(ex.on_stream_message)
+    console_stream.message.connect(ex.handle_stream_message)
 
     sys.stdout = console_stream
     sys.stderr = console_stream
