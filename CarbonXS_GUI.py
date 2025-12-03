@@ -303,7 +303,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.addmpl(self.fig)
 
         self.y_axis_lim = None
-        self.x_axis_lim = None
+        self.x_axis_lim = [0,100]
 
         self.current_filename = None
 
@@ -338,7 +338,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         
         # Initialize axis limits to None (will be set on first plot)
         self.x_limit = None
-        self.y_limit = None
+        self.y_limit = [0,]
+        self.ax.set_xlim(self.x_axis_lim)
+        self.ax.set_ylim(self.y_axis_lim)
         
         # Uncheck lock axis checkboxes by default to avoid using stale limits
         self.lock_x_axis.setChecked(False)
@@ -375,9 +377,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         configuration = {'program_config':
                              {'last_header_lines':self.last_header_lines_used,
                               'last_separator':self.last_separator_used,
-                              'lock_x':bool(self.lock_x_axis.checkState()),
-                              'lock_y':bool(self.lock_y_axis.checkState()),
-                              'show_previous_fit':bool(self.show_previous.checkState()),
+                              'lock_x':self.lock_x_axis.isChecked(),
+                              'lock_y':self.lock_y_axis.isChecked(),
+                              'show_previous_fit':self.show_previous.isChecked(),
 
                               },
                           'file_defaults':
@@ -1038,6 +1040,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
                     self.default_diff_data_dir = directory
 
+                    self.theta_min_value.setValue(np.min(self.x_data))
+                    self.theta_max_value.setValue(np.max(self.x_data))
+
                 except ValueError:
                     print("Error: Improperly formatted pattern file in file %s."%full_path)
                     print("The pattern file should conform to the JADE MDI format.")
@@ -1055,6 +1060,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
                     self.current_filename = filename
                     self.default_diff_data_dir = directory
+
+                    self.theta_min_value.setValue(np.min(self.x_data))
+                    self.theta_max_value.setValue(np.max(self.x_data))
 
                 except ValueError:
                     print("Error: Improperly formatted pattern file in file %s."%full_path)
@@ -1231,13 +1239,13 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
 
 
-        # If the lock y axis option is enabled, preserve the current axis limits
+        # If the lock y axis option is enabled, preserve the current axis limitsx_limit
         # However, only do this if there is already some data that has been plotted
         if len(self.x_fit_data) > 0 or len(self.x_data) > 0:
 
-            if self.lock_y_axis.checkState():
+            if self.lock_y_axis.isChecked():
                 self.y_limit = self.ax.get_ylim()
-            if self.lock_x_axis.checkState():
+            if self.lock_x_axis.isChecked():
                 self.x_limit = self.ax.get_xlim()
 
         self.fig.clf()
@@ -1255,7 +1263,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             self.ax.plot(self.x_fit_data, background, label="Background", linewidth = 2, color=bg_color)
 
 
-        if len(self.prev_x_fit) > 0 and self.show_previous.checkState():
+        if len(self.prev_x_fit) > 0 and self.show_previous.isChecked():
             self.ax.plot(self.prev_x_fit, self.prev_y_fit,'--', label="Previous Fit", linewidth = 2, color=prev_color)
 
 
@@ -1274,7 +1282,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         # Handle axis limits: only apply saved limits if lock is enabled AND limits are valid
         # Otherwise, let matplotlib auto-scale to fit the data
-        if self.lock_y_axis.checkState() and hasattr(self, 'y_limit') and self.y_limit is not None:
+        if self.lock_y_axis.isChecked() and hasattr(self, 'y_limit') and self.y_limit is not None:
             y_min, y_max = self.y_limit
             if y_min > 0 and y_max > y_min:  # Valid for log scale
                 self.ax.set_ylim(self.y_limit)
@@ -1286,11 +1294,16 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             # Auto-scale y-axis to fit data
             self.ax.autoscale(axis='y')
 
-        if self.lock_x_axis.checkState() and hasattr(self, 'x_limit') and self.x_limit is not None:
+        if self.lock_x_axis.isChecked() and hasattr(self, 'x_limit') and self.x_limit is not None:
+            print(self.lock_x_axis.isChecked(), hasattr(self, 'x_limit'), self.x_limit)
+            
             self.ax.set_xlim(self.x_limit)
+
         else:
             # Auto-scale x-axis to fit data
-            self.ax.autoscale(axis='x')
+            # self.ax.autoscale(axis='x')
+            self.ax.set_xlim((self.theta_min_value.value(), self.theta_max_value.value()))
+
 
         self.canvas.draw()
 
