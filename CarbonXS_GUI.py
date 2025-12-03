@@ -1999,6 +1999,17 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 f.write("Message: %s\n" % result['message'])
 
     def on_worker_finished(self, result):
+        # Properly disconnect signals and schedule deletion before clearing reference
+        if self.worker_thread:
+            try:
+                self.worker_thread.finished_signal.disconnect()
+                self.worker_thread.error_signal.disconnect()
+            except:
+                pass  # Signals may already be disconnected
+            
+            # Schedule Qt cleanup at appropriate time
+            self.worker_thread.deleteLater()
+        
         self.worker_thread = None
         
         if result['mode'] == 'calculate':
@@ -2054,6 +2065,17 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                  self.export_fit_results()
 
     def on_worker_error(self, error_msg):
+        # Properly disconnect signals and schedule deletion before clearing reference
+        if self.worker_thread:
+            try:
+                self.worker_thread.finished_signal.disconnect()
+                self.worker_thread.error_signal.disconnect()
+            except:
+                pass  # Signals may already be disconnected
+            
+            # Schedule Qt cleanup at appropriate time
+            self.worker_thread.deleteLater()
+        
         self.worker_thread = None
         print("Error in worker thread: %s" % error_msg)
         QtGui.QMessageBox.critical(self, "Error", "An error occurred during calculation:\n%s" % error_msg)
@@ -2411,6 +2433,13 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
     def closeEvent(self, event):
         if hasattr(self, 'worker_thread') and self.worker_thread is not None and self.worker_thread.isRunning():
             print("Stopping worker thread...")
+            # Disconnect signals before terminating
+            try:
+                self.worker_thread.finished_signal.disconnect()
+                self.worker_thread.error_signal.disconnect()
+            except:
+                pass  # Signals may already be disconnected
+            
             self.worker_thread.terminate()
             self.worker_thread.wait()
             
