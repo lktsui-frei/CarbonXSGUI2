@@ -104,7 +104,7 @@ Example diffraction data and parameter files are provided in the `examples/` dir
 ## Requirements
 
 - Python 3.9+
-- NumPy < 2.0 (for PySide6 compatibility)
+- NumPy >= 2.0 (compatible with PySide6 6.10+)
 - SciPy >= 1.4.1
 - Matplotlib >= 3.6.0
 - PySide6 >= 6.0.0
