@@ -70,7 +70,7 @@ def test_thread():
     
     # Load params
     print("Loading params...")
-    with open('examples/CARBON.INP', 'r') as f:
+    with open('examples/carbon.inp', 'r') as f:
         lines = f.readlines()
     
     params = []

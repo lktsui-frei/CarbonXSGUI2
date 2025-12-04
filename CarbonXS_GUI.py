@@ -441,7 +441,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                          os.path.join(user_data_directory, 'config', 'fitting settings'))
         if not os.path.exists(os.path.join(user_data_directory, "examples")):
             os.mkdir(os.path.join(user_data_directory, "examples"))
-            shutil.copy2(os.path.join(base_directory, 'examples','CARBON.INP'),
+            shutil.copy2(os.path.join(base_directory, 'examples','carbon.inp'),
                          os.path.join(user_data_directory, 'examples'))
             shutil.copy2(os.path.join(base_directory, 'examples','crystalline_carbon.dat'),
                          os.path.join(user_data_directory, 'examples'))
@@ -695,7 +695,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         self.export_fit_button= QtGui.QAction(QtGui.QIcon(os.path.join(base_directory,'icons','export.png')), 'Export Last Fit', self)
         self.export_fit_button.setStatusTip('Export Last Fit')
-        self.export_fit_button.setToolTip("Export the carbon.out, carbon.dat, and new CARBON.INP files of the most recent fit run by CarbonXS.")
+        self.export_fit_button.setToolTip("Export the carbon.out, carbon.dat, and new carbon.inp files of the most recent fit run by CarbonXS.")
 
         self.back_button = QtGui.QAction(QtGui.QIcon(os.path.join(base_directory,'icons','back_button.png')), 'Previous Fit/Calc', self)
         self.back_button.setStatusTip('Go to Previous Fit or Calculation')
@@ -1603,7 +1603,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def export_to_carboninp(self):
         """
-        Exports all current settings to a new CARBON.INP file
+        Exports all current settings to a new carbon.inp file
         This method is the part where user selects the destination.
 
         :return:
@@ -1611,18 +1611,18 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         if self.default_carboninp_export_dir:
 
-            fname, opened = QtGui.QFileDialog.getSaveFileName(self, 'Export CARBON.INP',
+            fname, opened = QtGui.QFileDialog.getSaveFileName(self, 'Export carbon.inp',
                                                               self.default_carboninp_export_dir, filter="*.inp")
         else:
-            fname, opened = QtGui.QFileDialog.getSaveFileName(self, 'Export CARBON.INP',
+            fname, opened = QtGui.QFileDialog.getSaveFileName(self, 'Export carbon.inp',
                                                           os.path.join(user_data_directory, 'config', 'fitting settings'), filter="*.inp")
 
         if fname:
             self.write_carboninp(fname)
             self.default_carboninp_export_dir, _ = os.path.split(fname)
 
-            print('Exported in CARBON.INP format to: %s'%fname)
-            self.statusBar().showMessage('Exported in CARBON.INP format to: %s'%fname)
+            print('Exported in carbon.inp format to: %s'%fname)
+            self.statusBar().showMessage('Exported in carbon.inp format to: %s'%fname)
 
     def write_carboninp(self, destination, disable_fit = False):
         """
@@ -1712,8 +1712,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             self.read_carboninp(fname)
             self.default_carboninp_import_dir, _ = os.path.split(fname)
 
-            print('Imported CARBON.INP parameters from: %s' % fname)
-            self.statusBar().showMessage('Imported CARBON.INP parameters from: %s' % fname)
+            print('Imported carbon.inp parameters from: %s' % fname)
+            self.statusBar().showMessage('Imported carbon.inp parameters from: %s' % fname)
 
     def read_carboninp(self, filename):
         """
@@ -2242,7 +2242,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def export_fit_results(self):
         """
-        Copies the carbon.out, carbon.dat, and CARBON.INP files currently in the carbonxs
+        Copies the carbon.out, carbon.dat, and carbon.inp files currently in the carbonxs
         directory to a destination of your choice.
         :return:
         """
@@ -2274,7 +2274,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 self.default_export_dir = directory
 
             else:
-                for data_file, export_suffix in [('carbon.out', '_carbon_out.txt'), ('carbon.dat', '_carbon_dat.txt'), ('CARBON.INP','_CARBON.INP')]:
+                for data_file, export_suffix in [('carbon.out', '_carbon_out.txt'), ('carbon.dat', '_carbon_dat.txt'), ('carbon.inp','_carbon.inp')]:
 
                     # Checks if the files exist in the directory
                     if data_file in os.listdir('carbonxs'):

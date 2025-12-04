@@ -89,7 +89,7 @@ python CarbonXS_GUI.py
 Example diffraction data and parameter files are provided in the `examples/` directory:
 
 - `examples/crystalline_carbon.dat` - Example XRD data
-- `examples/CARBON.INP` - Example parameter file
+- `examples/carbon.inp` - Example parameter file
 
 ## Features
 

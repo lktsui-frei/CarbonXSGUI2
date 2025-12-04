@@ -32,7 +32,7 @@ PARAM_LABELS = [
     "PO, Preferred Orientation Factor"
 ]
 
-# Default values (from examples/CARBON.INP)
+# Default values (from examples/carbon.inp)
 DEFAULT_PARAMS = [
     33800.0, 116.78, 483.09, -353.58, 0.0, 0.0, 0.0,
     2.4615, 3.3611, 293.51, 141.69, 2.0, 0.0, 0.024387,

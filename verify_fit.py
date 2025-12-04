@@ -36,8 +36,8 @@ def read_data(filename):
     return data[:, 0], data[:, 1] # X, Y_obs
 
 def verify_fit():
-    # Load initial parameters from examples/CARBON.INP (before Fortran refinement)
-    params_init, lam, nphi, nsg, nlayer, rdens, l0, wd, ww, bw = read_carbon_inp('examples/CARBON.INP')
+    # Load initial parameters from examples/carbon.inp (before Fortran refinement)
+    params_init, lam, nphi, nsg, nlayer, rdens, l0, wd, ww, bw = read_carbon_inp('examples/carbon.inp')
     
     # Load observed data
     x_obs, y_obs = read_data('examples/crystalline_carbon.dat')
@@ -58,10 +58,10 @@ def verify_fit():
     fitter = CarbonXSFit(model)
     
     # Define which parameters to refine
-    # Based on CARBON.INP flags (2nd column)
+    # Based on carbon.inp flags (2nd column)
     # 1 means refine, 0 means fixed
     refine_flags = []
-    with open('examples/CARBON.INP', 'r') as f:
+    with open('examples/carbon.inp', 'r') as f:
         lines = f.readlines()
         for i in range(6, 24):
             parts = lines[i].split()

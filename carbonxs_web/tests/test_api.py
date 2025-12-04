@@ -15,7 +15,7 @@ def test_read_main():
     assert response.json() == {"message": "CarbonXS API is running"}
 
 def test_calculate():
-    # Parameters from examples/CARBON.INP
+    # Parameters from examples/carbon.inp
     params = [
         33800.0,   # Scale
         116.78,    # BG Const

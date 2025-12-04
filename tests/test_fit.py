@@ -13,7 +13,7 @@ def fitter(model):
     return CarbonXSFit(model)
 
 def read_carbon_inp(filename):
-    """Helper to read CARBON.INP files."""
+    """Helper to read carbon.inp files."""
     with open(filename, 'r') as f:
         lines = f.readlines()
     
@@ -112,16 +112,16 @@ def test_residuals_weights(fitter, model):
     assert np.allclose(res, -0.5)
 
 def test_fit_with_example_data():
-    """Test fitting with example CARBON.INP and crystalline_carbon.dat."""
+    """Test fitting with example carbon.inp and crystalline_carbon.dat."""
     # Get paths to example files
     base_dir = os.path.dirname(os.path.dirname(__file__))
-    inp_file = os.path.join(base_dir, 'examples', 'CARBON.INP')
+    inp_file = os.path.join(base_dir, 'examples', 'carbon.inp')
     dat_file = os.path.join(base_dir, 'examples', 'crystalline_carbon.dat')
     
     assert os.path.exists(inp_file), f"Example file not found: {inp_file}"
     assert os.path.exists(dat_file), f"Example data not found: {dat_file}"
     
-    # Load parameters and settings from CARBON.INP
+    # Load parameters and settings from carbon.inp
     config = read_carbon_inp(inp_file)
     
     # Load observed data

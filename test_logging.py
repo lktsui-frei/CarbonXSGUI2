@@ -36,7 +36,7 @@ def test_logging():
     model.BW = 1.0
     model.n_layers_model = 1
     
-    # Example parameters (from CARBON.INP)
+    # Example parameters (from carbon.inp)
     initial_params = [
         33800.0, 116.78, 483.09, -353.58, 0.0, 0.0, 0.0,
         2.4615, 3.3611, 293.51, 141.69, 2.0, 0.0, 0.024387,
