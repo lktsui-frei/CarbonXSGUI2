@@ -236,7 +236,7 @@ class CarbonXSModel:
             # Or just loop over a reasonable number of steps (e.g. 20) and sum.
             
             # Let's use the max nphi1 across the batch?
-            nphi1_vals = (2 * phi1_full / dphi_full).astype(int) + 1
+            nphi1_vals = (2 * phi1_full / dphi_full).astype(np.intp) + 1
             max_nphi1 = np.max(nphi1_vals) if len(nphi1_vals) > 0 else 0
             
             # Limit max steps to avoid memory explosion
@@ -359,7 +359,7 @@ class CarbonXSModel:
         th = np.arcsin(s_array * self.LAM / 2.0)
         foot = 1.0 / np.sin(th)
         th_max = self.WD / self.L0 * np.cos(th)
-        nj = (th_max / dth).astype(int)
+        nj = (th_max / dth).astype(np.intp)
         
         # Construct convolution matrix?
         # A full matrix would be (1151, 1151), which is fine (~10MB).
