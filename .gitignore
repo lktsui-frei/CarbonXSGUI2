@@ -8,3 +8,4 @@ carbonxs/*.out
 carbonxs/SCAN1.DAT
 test_output.txt
 logs/
+.venv/
