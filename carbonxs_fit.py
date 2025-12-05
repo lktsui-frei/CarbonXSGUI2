@@ -42,6 +42,56 @@ class CarbonXSFit:
         else:
             return diff
             
+    def _get_parameter_bounds(self):
+        """
+        Define physical bounds for all 18 parameters.
+        Returns tuple of (lower_bounds, upper_bounds) arrays.
+        """
+        # Initialize with very wide bounds (-inf, inf)
+        lower = np.full(18, -np.inf)
+        upper = np.full(18, np.inf)
+        
+        # Parameter indices (0-based):
+        # 0: Scale
+        # 1-6: Background parameters
+        # 7: A (Cell constant) > 0
+        lower[7] = 1.0  # Reasonable lower bound for A
+        
+        # 8: d002 (Layer spacing) > 0
+        lower[8] = 1.0
+        
+        # 9: La (Coherence length) > 0
+        lower[9] = 1.0
+        
+        # 10: M (Number of layers) > 0
+        lower[10] = 0.1
+        
+        # 11: SM (Width of M distribution) > 0
+        lower[11] = 0.0
+        
+        # 12: Dab (In plane strain) >= 0
+        lower[12] = 0.0
+        
+        # 13: Del (Interplanar strain) >= 0
+        lower[13] = 0.0
+        
+        # 14: Pr (Probability of Random Stacking) 0 <= Pr < 1
+        # Constrain to slightly less than 1 to avoid singularity
+        lower[14] = 0.0
+        upper[14] = 0.99999
+        
+        # 15: Pt (Prob 3R) or g (Fraction low strain) 0 <= Pt < 1
+        lower[15] = 0.0
+        upper[15] = 0.99999
+        
+        # 16: B (Temp factor) >= 0
+        lower[16] = 0.0
+        
+        # 17: PO (Preferred orientation) >= 0
+        lower[17] = 0.0
+        
+        return lower, upper
+
     def fit(self, initial_params, refine_flags, x_data, y_data, weights=None, max_nfev=None):
         """
         Perform the least squares fit.
@@ -65,10 +115,21 @@ class CarbonXSFit:
             print("No parameters to refine.")
             return initial_params, None
             
+        # Get bounds
+        lower_bounds, upper_bounds = self._get_parameter_bounds()
+        
+        # Extract bounds for refined parameters
+        refined_lower = lower_bounds[refine_mask]
+        refined_upper = upper_bounds[refine_mask]
+        
+        # Ensure initial guess is within bounds
+        x0 = np.clip(x0, refined_lower, refined_upper)
+        
         # Run optimization
         res = least_squares(
             self.residuals, 
             x0, 
+            bounds=(refined_lower, refined_upper),
             args=(initial_params, refine_mask, s_array, y_data, weights),
             max_nfev=max_nfev,
             verbose=0  # Set to 0 to reduce console output

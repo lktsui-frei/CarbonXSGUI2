@@ -1886,12 +1886,12 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         if self.param_13.value() < 0:
             print("ERROR: Del (Interplanar strain) must be greater than 0.")
             errors += 1
-        if self.param_14.value() > 1 or  self.param_14.value() < 0:
-            print("ERROR: Pr must be between 0 and 1.")
-            errors += 1
-        if self.param_15.value() > 1 or  self.param_15.value() < 0:
-            print("ERROR: g (1 layer model) or Pt (2 layer model) must be between 0 and 1.")
-            errors += 1
+        if self.param_14.value() > 1.00001 or self.param_14.value() < -0.00001:
+            print("Warning: Pr should be between 0 and 1. It will be constrained during fitting.")
+            warnings += 1
+        if self.param_15.value() > 1.00001 or self.param_15.value() < -0.00001:
+            print("Warning: g (1 layer model) or Pt (2 layer model) should be between 0 and 1. It will be constrained during fitting.")
+            warnings += 1
         if self.param_16.value() < 0:
             print("Warning: Debye Waller Temperature factor is less than 0.")
             warnings += 1

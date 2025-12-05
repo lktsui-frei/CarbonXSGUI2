@@ -100,6 +100,7 @@ Example diffraction data and parameter files are provided in the `examples/` dir
 - Support for 1-layer and 2-layer carbon models
 - Import/export parameter files
 - Plot comparison between observed and calculated patterns
+- Automatic parameter bounding (prevents singularities for Pr/Pt parameters)
 
 ## Requirements
 
