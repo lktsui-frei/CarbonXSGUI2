@@ -8,6 +8,7 @@ os.environ['QT_API'] = 'pyside6'
 
 import numpy as np
 from matplotlib.figure import Figure
+from matplotlib.gridspec import GridSpec
 try:
     from matplotlib.backends.backend_qt5agg import (
         FigureCanvasQTAgg as FigureCanvas,
@@ -48,6 +49,7 @@ from carbonxs_fit import CarbonXSFit
 class WorkerThread(QtCore.QThread):
     finished_signal = QtCore.Signal(object) # Emits result dict
     error_signal = QtCore.Signal(str)
+    loss_signal = QtCore.Signal(float)
 
     def __init__(self, mode, params, settings, data=None, refine_flags=None):
         super(WorkerThread, self).__init__()
@@ -106,7 +108,11 @@ class WorkerThread(QtCore.QThread):
                 max_nfev = int(self.settings.get('iterations', 100)) * 100  # Scale by 100 for reasonable limit
                 print(f"DEBUG: Starting fit with max_nfev={max_nfev}")
                 
-                final_params, res = fitter.fit(self.params, self.refine_flags, x_obs, y_obs, max_nfev=max_nfev)
+                # Define loss callback
+                def loss_callback(cost):
+                    self.loss_signal.emit(cost)
+
+                final_params, res = fitter.fit(self.params, self.refine_flags, x_obs, y_obs, max_nfev=max_nfev, loss_callback=loss_callback)
                 
                 # Recalculate pattern with final params
                 model.set_parameters(final_params, model.n_layers_model)
@@ -300,6 +306,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.ax.set_xlabel('2 $\\theta$ / Degrees', fontsize=14)
         self.ax.set_ylabel(r'Intensity / a.u.', fontsize=14)
         self.ax.grid(True)
+        
+        self.loss_data = []
+        
         self.addmpl(self.fig)
 
         self.y_axis_lim = None
@@ -1195,6 +1204,31 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         return bg
 
 
+
+    def update_loss_plot(self, loss):
+        """
+        Updates the loss plot with the latest loss value
+        """
+        if not hasattr(self, 'loss_data'):
+            self.loss_data = []
+            
+        self.loss_data.append(loss)
+        
+        # Only redraw every N points to avoid freezing GUI
+        if len(self.loss_data) % 10 == 0:
+            self.ax_loss.clear()
+            self.ax_loss.plot(range(len(self.loss_data)), self.loss_data, 'r-', linewidth=1.5)
+            self.ax_loss.set_xlabel('Func Evals', fontsize=10)
+            self.ax_loss.set_ylabel('Loss', fontsize=10)
+            self.ax_loss.set_title('Fitting Progress', fontsize=10)
+            self.ax_loss.grid(True)
+            self.ax_loss.set_yscale('log')
+            self.ax_loss.tick_params(axis='both', which='major', labelsize=10)
+            # Use scientific notation for y-axis if values are small/large
+            # self.ax_loss.ticklabel_format(style='sci', axis='y', scilimits=(0,0)) # Not needed for log scale
+            
+            self.canvas.draw()
+
     def plot_loaded_data(self):
         """
         Plots the loaded source and fit data
@@ -1220,7 +1254,11 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 self.x_limit = self.ax.get_xlim()
 
         self.fig.clf()
-        self.ax = self.fig.add_subplot(111)
+        
+        # Use GridSpec to create two subplots with width ratio 3:1
+        gs = GridSpec(1, 2, width_ratios=[3, 1])
+        self.ax = self.fig.add_subplot(gs[0])
+        self.ax_loss = self.fig.add_subplot(gs[1])
 
         if len(self.x_data) > 0:
             print(f"Plotting source data: {len(self.x_data)} points, x range: [{min(self.x_data):.2f}, {max(self.x_data):.2f}]")
@@ -1275,6 +1313,21 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             # self.ax.autoscale(axis='x')
             self.ax.set_xlim((self.theta_min_value.value(), self.theta_max_value.value()))
 
+
+        # Plot loss data if available
+        if hasattr(self, 'loss_data') and len(self.loss_data) > 0:
+            self.ax_loss.plot(range(len(self.loss_data)), self.loss_data, 'r-', linewidth=1.5)
+            self.ax_loss.set_xlabel('Func Evals', fontsize=10)
+            self.ax_loss.set_ylabel('Loss', fontsize=10)
+            self.ax_loss.set_title('Fitting Progress', fontsize=10)
+            self.ax_loss.grid(True)
+            self.ax_loss.set_yscale('log')
+            self.ax_loss.tick_params(axis='both', which='major', labelsize=10)
+            # Use scientific notation for y-axis if values are small/large
+            # self.ax_loss.ticklabel_format(style='sci', axis='y', scilimits=(0,0)) # Not needed for log scale
+        else:
+            # Hide the loss plot if no data
+            self.ax_loss.axis('off')
 
         self.canvas.draw()
 
@@ -1988,6 +2041,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             try:
                 self.worker_thread.finished_signal.disconnect()
                 self.worker_thread.error_signal.disconnect()
+                self.worker_thread.loss_signal.disconnect()
             except:
                 pass  # Signals may already be disconnected
             
@@ -2054,6 +2108,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             try:
                 self.worker_thread.finished_signal.disconnect()
                 self.worker_thread.error_signal.disconnect()
+                self.worker_thread.loss_signal.disconnect()
             except:
                 pass  # Signals may already be disconnected
             
@@ -2106,6 +2161,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.worker_thread = WorkerThread('fit', params, settings, data, refine_flags)
         self.worker_thread.finished_signal.connect(self.on_worker_finished)
         self.worker_thread.error_signal.connect(self.on_worker_error)
+        self.worker_thread.loss_signal.connect(self.update_loss_plot)
+        self.loss_data = []
         self.worker_thread.start()
         
         # Disable buttons
@@ -2421,6 +2478,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             try:
                 self.worker_thread.finished_signal.disconnect()
                 self.worker_thread.error_signal.disconnect()
+                self.worker_thread.loss_signal.disconnect()
             except:
                 pass  # Signals may already be disconnected
             
