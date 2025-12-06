@@ -1,0 +1,24 @@
+SCAN.DAT
+  15.00    120.00 1.541800       1              Thmin   Thmax   Lambda  Nskip
+     18        10        3       2              Npar    Nphi    Nsg     Nlayer
+  0.500   205.000    2.000  25.000    1.500     Rdens   L0      Wd      Ww      Bw
+      8   0.00100                               Itmax   Eps
+      0   0.00000                               Itest   Dx
+  1.9996E+04  0    Scale Factor (a.u.)                                                   
+  6.5271E+02  0    Background Constant                                                   
+ -1.1620E+03  0    Background S                                                          
+  6.5566E+02  0    Background S^2                                                        
+  5.2459E+02  1    Background S^3                                                        
+ -4.3049E+02  1    Background S^4                                                        
+ -7.1937E+01  1    Background 1/S                                                        
+  2.4579E+00  1    A, In Plane Cell Constant (Angstrom)                                  
+  3.3659E+00  1    d002, Interlayer Spacing (Angstrom)                                   
+  4.7977E+02  1    La, Coherence Length                                                  
+  6.9741E+01  1    M, Number of Layers                                                   
+  2.7409E+01  1    SM, Width of M Distribution                                           
+  1.4700E-03  1    DAB, In plane strain                                                  
+  3.0470E-02  1    del, Inter Plane Strain                                               
+  2.7502E-01  1    Pr, Probability of Random Stacking                                    
+  5.9280E-02  1    Pt, Probability of 3R Stacking                                        
+  1.6764E+00  1    Debye Waller Temperature Factor, (Angstrom^2)                         
+  5.1720E-01  1    PO, Preferential Orientation Factor                                   

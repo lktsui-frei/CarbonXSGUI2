@@ -3,8 +3,10 @@ __pycache__/
 *.png
 carbonxs/carbonxs_app
 carbonxs/*.dat
-carbonxs/*.inp
 carbonxs/*.out
+# Allow reference files for testing
+!carbonxs/carbon.inp
+!carbonxs/carbon.dat
 carbonxs/SCAN1.DAT
 test_output.txt
 logs/
