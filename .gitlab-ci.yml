@@ -28,7 +28,7 @@ test:
     - echo "Running pytest tests..."
     # Run all tests, pytest will automatically skip deprecated tests marked with @pytest.mark.skip
     # and conditionally skip tests that require Fortran reference data if unavailable
-    - pytest tests/ -v --tb=short
+    - pytest tests/ -v --tb=short --junitxml=report.xml
   only:
     - branches
     - merge_requests
