@@ -2513,26 +2513,4 @@ def main():
 
 
 if __name__ == '__main__':
-
-    # Check if carbon program is present
-    print("Checking if programs are available")
-
-    if  'darwin' in sys.platform or 'linux' in sys.platform:
-        if 'carbonxs_app' not in os.listdir(os.path.join(base_directory, 'carbonxs')):
-            print("ERROR: carbonxs_app is not present in the carbonxs directory")
-            print("This indicates that a version of the carbonxs program has not yet been compiled")
-            print("Please compile (see compiling.txt) the Fortran program using GCC.")
-            print("Alternately, run compile.sh")
-            sys.exit()
-        else:
-            print("Found CarbonXS!")
-
-
-    elif 'win32' in sys.platform:
-        if 'carbonxs_gfortran.exe' not in os.listdir(os.path.join(base_directory, 'carbonxs')):
-            print("ERROR! carbonxs_gfortran.exe is not in the carbonxs directory")
-            print("Please make sure this program has been correctly extracted.")
-            sys.exit()
-        else:
-            print("Found CarbonXS!")
     main()
