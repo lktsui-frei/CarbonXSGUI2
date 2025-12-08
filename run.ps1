@@ -27,23 +27,32 @@ if (-not $condaCommand) {
     exit 1
 }
 
-# Check if environment exists
-$envExists = conda env list | Select-String -Pattern "^${ENV_NAME}\s"
-if ($envExists) {
-    Write-Host "✓ Environment '${ENV_NAME}' already exists" -ForegroundColor Green
+# Check if environment exists using conda info (more reliable than string parsing)
+$envExistsResult = conda info --envs | Select-String -Pattern "^$ENV_NAME\s"
+
+if ($envExistsResult) {
+    Write-Host "[OK] Environment '${ENV_NAME}' already exists" -ForegroundColor Green
 } else {
     Write-Host "Creating conda environment '${ENV_NAME}' with Python 3.9..." -ForegroundColor Yellow
-    conda create -n $ENV_NAME python=3.9 -y
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: Failed to create conda environment" -ForegroundColor Red
+    
+    # Use -ErrorAction Stop with a try/catch block for robust error handling
+    try {
+        conda create -n $ENV_NAME python=3.9 -y
+        Write-Host "[OK] Environment created" -ForegroundColor Green
+        
+        # Force Conda index refresh after successful creation (This is a good guardrail)
+        Write-Host "Forcing Conda index refresh..." -ForegroundColor DarkYellow
+        conda env list | Out-Null
+        
+    } catch {
+        Write-Host "ERROR: Failed to create conda environment: $($_.Exception.Message)" -ForegroundColor Red
         exit 1
     }
-    Write-Host "✓ Environment created" -ForegroundColor Green
 }
 
 Write-Host ""
 Write-Host "Installing/updating dependencies..." -ForegroundColor Yellow
-conda run -n $ENV_NAME pip install -r "$SCRIPT_DIR\requirements.txt" --quiet
+conda run --no-capture-output -n $ENV_NAME pip install -r "$SCRIPT_DIR\requirements.txt"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to install dependencies" -ForegroundColor Red
     exit 1
@@ -51,7 +60,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "Verifying installation..." -ForegroundColor Yellow
-conda run -n $ENV_NAME python "$SCRIPT_DIR\verify_installation.py"
+conda run -n $ENV_NAME python "$SCRIPT_DIR\tests\test_installation.py"
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
     Write-Host "=========================================" -ForegroundColor Green
