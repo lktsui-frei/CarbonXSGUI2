@@ -41,7 +41,7 @@ conda run -n "${ENV_NAME}" pip install -r "${SCRIPT_DIR}/requirements.txt" --qui
 
 echo ""
 echo "Verifying installation..."
-if conda run -n "${ENV_NAME}" python "${SCRIPT_DIR}/verify_installation.py"; then
+if conda run -n "${ENV_NAME}" python "${SCRIPT_DIR}/tests/test_installation.py"; then
     echo ""
     echo "========================================="
     echo "Installation successful!"
