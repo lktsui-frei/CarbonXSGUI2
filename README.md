@@ -42,7 +42,7 @@ After first-time setup, you can use the faster launch script:
 
 ### Recommended: uv Environment
 
-The easiest way to get started is to use `uv`, a fast Python package installer and resolver.
+The easiest way to get started is to use [`uv`](https://docs.astral.sh/uv/), a fast Python package installer and resolver.
 
 ```bash
 # Create a new virtual environment
