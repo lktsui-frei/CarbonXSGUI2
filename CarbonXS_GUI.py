@@ -2,6 +2,7 @@ from qt_compat import QtGui, QtCore, Qt
 import ujson
 import sys
 import os
+import signal
 from pathlib import Path
 # Force matplotlib to use PySide6
 os.environ['QT_API'] = 'pyside6'
@@ -2517,6 +2518,9 @@ def main():
     sys.stderr = console_stream
 
     ex.data_init()
+
+    # Allow Ctrl+C to exit the application
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     sys.exit(app.exec())
 

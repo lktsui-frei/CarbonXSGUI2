@@ -11,11 +11,11 @@ CarbonXS has been fully ported from Fortran to pure Python, using NumPy and SciP
 The easiest way to get started:
 
 ```bash
-./run.sh
+./firstsetup.sh
 ```
 
 This will automatically:
-1. Create a conda environment (if needed)
+1. Create a virtual environment (if needed)
 2. Install all dependencies
 3. Verify the installation
 4. Launch the GUI
@@ -28,27 +28,24 @@ After first-time setup, you can use the faster launch script:
 
 ## Installation
 
-### Recommended: Conda Environment
+### Recommended: uv Environment
 
-The easiest way to get started is to use conda:
+The easiest way to get started is to use `uv`, a fast Python package installer and resolver.
 
 ```bash
-# Create a new conda environment
-conda create -n carbon_xs_gui python=3.9
-
-# Activate the environment
-conda activate carbon_xs_gui
+# Create a new virtual environment
+uv venv --python 3.9
 
 # Install dependencies
-conda install -c conda-forge numpy scipy matplotlib ujson appdirs pyside6
+uv pip install -r requirements.txt
 
-# Or install from requirements.txt (after activating conda env)
-pip install -r requirements.txt
+# Run the application
+uv run python CarbonXS_GUI.py
 ```
 
 ### Alternative: Virtual Environment (venv)
 
-If you prefer to use venv instead of conda:
+If you prefer to use the standard Python `venv` module instead of `uv`:
 
 ```bash
 # Create virtual environment
@@ -66,7 +63,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-**Note:** On some Linux systems, older Qt versions may have system library dependencies. If you encounter any import errors, using conda is recommended as it handles these dependencies automatically.
+**Note:** On some Linux systems, older Qt versions may have system library dependencies. If you encounter any import errors, ensure your system has the required Qt dependencies installed.
 
 ### Verify Installation
 
