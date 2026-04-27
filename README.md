@@ -10,8 +10,14 @@ CarbonXS has been fully ported from Fortran to pure Python, using NumPy and SciP
 
 The easiest way to get started:
 
+**On Linux/Mac:**
 ```bash
 ./firstsetup.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+.\firstsetup.ps1
 ```
 
 This will automatically:
@@ -22,8 +28,14 @@ This will automatically:
 
 After first-time setup, you can use the faster launch script:
 
+**On Linux/Mac:**
 ```bash
 ./launch.sh
+```
+
+**On Windows (PowerShell):**
+```powershell
+.\launch.ps1
 ```
 
 ## Installation
