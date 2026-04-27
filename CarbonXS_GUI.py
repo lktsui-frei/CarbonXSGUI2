@@ -2,7 +2,7 @@ from qt_compat import QtGui, QtCore, Qt
 import ujson
 import sys
 import os
-
+from pathlib import Path
 # Force matplotlib to use PySide6
 os.environ['QT_API'] = 'pyside6'
 
@@ -11,8 +11,14 @@ import matplotlib
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 
+import matplotlib.font_manager as fm
+
 # Set fonts to support non-ASCII characters (like CJK)
-matplotlib.rcParams['font.sans-serif'] = ['Noto Sans CJK JP', 'Arial Unicode MS', 'SimHei', 'DejaVu Sans']
+font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fonts', 'OpenSans-VariableFont_wdth,wght.ttf')
+if os.path.exists(font_path):
+    fm.fontManager.addfont(font_path)
+
+matplotlib.rcParams['font.sans-serif'] = ['OpenSans', 'Noto Sans CJK JP', 'Arial Unicode MS', 'SimHei', 'DejaVu Sans']
 matplotlib.rcParams['axes.unicode_minus'] = False
 try:
     from matplotlib.backends.backend_qt5agg import (
