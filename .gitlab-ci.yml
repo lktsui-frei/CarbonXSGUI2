@@ -6,20 +6,19 @@ image: python:3.11
 stages:
   - test
 
-# Cache pip packages to speed up pipeline
+# Cache uv packages to speed up pipeline
 cache:
   paths:
-    - .cache/pip
+    - .cache/uv
 
 variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
 
 before_script:
   - apt-get update && apt-get -y install libgl1
-  - echo "Setting up Python environment..."
-  - python --version
-  - pip install --upgrade pip
-  - pip install -r requirements.txt
+  - echo "Setting up Python environment with uv..."
+  - pip install uv
+  - uv pip install --system -r requirements.txt
 
 # Run Python tests
 test:
@@ -45,7 +44,7 @@ test:
 # coverage:
 #   stage: test
 #   script:
-#     - pip install pytest-cov
+#     - uv pip install --system pytest-cov
 #     - pytest tests/ --cov=. --cov-report=xml --cov-report=term
 #   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
 #   artifacts:
