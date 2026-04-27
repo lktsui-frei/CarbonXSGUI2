@@ -7,8 +7,13 @@ import os
 os.environ['QT_API'] = 'pyside6'
 
 import numpy as np
+import matplotlib
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
+
+# Set fonts to support non-ASCII characters (like CJK)
+matplotlib.rcParams['font.sans-serif'] = ['Noto Sans CJK JP', 'Arial Unicode MS', 'SimHei', 'DejaVu Sans']
+matplotlib.rcParams['axes.unicode_minus'] = False
 try:
     from matplotlib.backends.backend_qt5agg import (
         FigureCanvasQTAgg as FigureCanvas,
