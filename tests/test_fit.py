@@ -1,3 +1,4 @@
+import threading
 import pytest
 import numpy as np
 import os
@@ -186,3 +187,112 @@ def test_fit_with_example_data():
         assert params_changed, "At least one parameter should change during fitting"
     
     print(f"  ✓ Test passed - fit completed successfully!")
+
+
+def test_default_poisson_weights_bounds_and_tolerances(fitter, model):
+    """Test default Poisson weighting, explicit unweighted option, bounds, and ftol/xtol."""
+    lower, upper = fitter._get_parameter_bounds()
+    assert lower[0] == 0.0, f"Scale lower bound should be 0.0, got {lower[0]}"
+    assert upper[14] == 1.0, f"Pr upper bound should be 1.0, got {upper[14]}"
+    assert upper[15] == 1.0, f"Pt upper bound should be 1.0, got {upper[15]}"
+
+    params = np.zeros(18)
+    params[0] = 100.0
+    params[7] = 2.46
+    params[8] = 3.35
+    params[9] = 50.0
+    params[10] = 10.0
+    params[11] = 1.0
+
+    lam = 1.5418
+    x_obs = np.linspace(20.0, 80.0, 61)
+    s_array = 2.0 * np.sin(np.radians(x_obs / 2.0)) / lam
+    model.set_parameters(params, n_layers_model=1)
+    y_true = model.all_inten(s_array, model.params)
+    # Add constant offset +100 so residual at optimum isn't zero and weighting affects cost
+    y_obs = y_true + 100.0
+
+    refine_flags = [False] * 18
+    refine_flags[0] = True
+    init = params.copy()
+    init[0] = 90.0
+
+    final_poisson, res_poisson = fitter.fit(init, refine_flags, x_obs, y_obs, ftol=1e-6, xtol=1e-6)
+    final_unweighted, res_unweighted = fitter.fit(init, refine_flags, x_obs, y_obs, weights=None, ftol=1e-6, xtol=1e-6)
+
+    assert res_poisson.success and res_unweighted.success
+    # Poisson weighting and unweighted weighting should produce different optimal Scale when residual != 0
+    assert not np.isclose(final_poisson[0], final_unweighted[0], rtol=1e-4)
+
+
+def test_cooperative_abort(fitter, model):
+    """Test that setting abort_event raises FitAbortedError cleanly."""
+    from carbonxs_fit import FitAbortedError
+
+    params = np.zeros(18)
+    params[0] = 100.0
+    params[7] = 2.46
+    params[8] = 3.35
+    params[9] = 50.0
+    params[10] = 10.0
+    params[11] = 1.0
+
+    x_obs = np.linspace(20.0, 80.0, 41)
+    s_array = 2.0 * np.sin(np.radians(x_obs / 2.0)) / 1.5418
+    model.set_parameters(params, n_layers_model=1)
+    y_obs = model.all_inten(s_array, model.params)
+
+    init = params.copy()
+    init[0] = 50.0
+    refine_flags = [False] * 18
+    refine_flags[0] = True
+
+    abort_event = threading.Event()
+    calls = [0]
+
+    def on_loss(_cost):
+        calls[0] += 1
+        if calls[0] >= 2:
+            abort_event.set()
+
+    with pytest.raises(FitAbortedError):
+        fitter.fit(init, refine_flags, x_obs, y_obs, loss_callback=on_loss, abort_event=abort_event)
+
+
+def test_compute_fit_statistics(fitter, model):
+    """Test compute_fit_statistics returns reduced_chi2, ESDs, correlation matrix, and Lc."""
+    params = np.zeros(18)
+    params[0] = 500.0
+    params[7] = 2.46
+    params[8] = 3.36
+    params[9] = 50.0
+    params[10] = 15.0
+    params[11] = 2.0
+
+    x_obs = np.linspace(15.0, 90.0, 151)
+    s_array = 2.0 * np.sin(np.radians(x_obs / 2.0)) / 1.5418
+    model.set_parameters(params, n_layers_model=1)
+    rng = np.random.default_rng(123)
+    y_true = model.all_inten(s_array, model.params)
+    y_obs = y_true + rng.normal(0.0, np.sqrt(np.maximum(y_true, 1.0)))
+
+    init = params.copy()
+    init[0] = 450.0
+    init[8] = 3.38
+    init[10] = 13.0
+    refine_flags = [False] * 18
+    refine_flags[0] = True
+    refine_flags[8] = True
+    refine_flags[10] = True
+
+    final_params, res = fitter.fit(init, refine_flags, x_obs, y_obs)
+    stats = fitter.compute_fit_statistics(final_params, refine_flags, res)
+
+    assert stats['reduced_chi2'] > 0.0
+    assert len(stats['siga']) == 18
+    assert stats['siga'][0] > 0.0 and stats['siga'][8] > 0.0 and stats['siga'][10] > 0.0
+    assert stats['siga'][7] == 0.0  # Fixed parameter
+    assert stats['corr'].shape == (18, 18)
+    assert np.isclose(stats['corr'][0, 0], 100.0)
+    assert np.isclose(stats['lc'], final_params[8] * final_params[10])
+    assert np.isfinite(stats['slc']) and stats['slc'] > 0.0

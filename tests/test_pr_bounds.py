@@ -64,8 +64,15 @@ def test_pr_bounds_enforcement():
     print(f"Final Pr (from 1.5): {final_params[14]}")
     
     # Assertions for bounds safety
-    assert final_params[14] < 0.999991, "Pr should be upper bounded"
-    assert final_params[14] > 0.0, "Pr should be lower bounded"
+    assert final_params[14] <= 1.0, "Pr should be upper bounded at 1.0"
+    assert final_params[14] >= 0.0, "Pr should be lower bounded at 0.0"
+
+    # Also verify fitting starting at exact Pr=1.0 does not produce NaN or fail
+    init_pr1 = params.copy()
+    init_pr1[14] = 1.0
+    final_pr1, res_pr1 = fitter.fit(init_pr1, refine_flags, x_data, y_obs)
+    assert res_pr1.success
+    assert np.all(np.isfinite(final_pr1))
     
     # Test 2: Convergence from a valid starting point
     # This ensures we haven't broken the ability to fit
@@ -109,7 +116,7 @@ def test_pt_bounds_enforcement():
     print(f"Final Pt (from -0.5): {final_params[15]}")
     
     assert final_params[15] >= 0.0, "Pt should be lower bounded"
-    assert final_params[15] < 0.999991, "Pt should be upper bounded"
+    assert final_params[15] <= 1.0, "Pt should be upper bounded"
     
     # Test 2: Convergence from valid start
     initial_params_valid = params.copy()
