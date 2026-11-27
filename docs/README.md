@@ -10,12 +10,11 @@ CarbonXS GUI brings the structural refinement model originally developed in Fort
 
 ### Key Features
 
-- **Pure-Python Physics & Fitting Engine:** Implements the full 1-layer and 2-layer CarbonXS scattering model in [carbonxs_core.py](../carbonxs_core.py) and bounded Trust Region Reflective least-squares fitting in [carbonxs_fit.py](../carbonxs_fit.py), with Fortran-compatible Poisson weighting ($w_i = 1/\sqrt{\max(Y_i, 1)}$) and $O(N)$ banded instrumental convolution.
+- **Pure-Python Physics & Fitting Engine:** Implements the full 1-layer and 2-layer CarbonXS scattering model in [carbonxs_core.py](../carbonxs_core.py) and bounded Trust Region Reflective least-squares fitting in [carbonxs_fit.py](../carbonxs_fit.py).
 - **No Dataset Size Limit:** Removed the legacy 3,000-point Fortran array cap — load and fit high-resolution XRD scans directly.
 - **Interactive Pattern & Live Progress Plots:** View the diffraction pattern alongside the calculated fit, background curve, residual difference plot, previous fit comparison, optional log/linear Y-axis scaling, axis locking, and a live log-scale **Fitting Progress** loss curve.
 - **Fit Results Summary & Diagnostics:** Automatically displays final vs. initial values, estimated standard deviations (ESDs), reduced $\chi^2$, and crystallite stack height $L_c \pm \sigma_{L_c}$ upon fit completion, with full correlation matrices written to `carbon.out`.
-- **Flexible Import & Export:** Load `.mdi` (Jade), `.ras` (Rigaku), `.xy`, and custom delimited text files; save and reload parameters as `.json` or legacy `carbon.inp`; export full CarbonXS outputs (`_carbon_out.txt`, `_carbon_dat.txt`, `_carbon.inp`) or fitted curves as `.mdi`.
-- **Cooperative Abort:** Safely cancel long-running fits at any time from the UI without terminating external processes.
+- **Flexible Import & Export:** Load `.mdi` (Jade), `.ras` (Rigaku), `.xy`, and custom delimited text files; save and reload parameters as `.json` or legacy `carbon.inp`.
 
 ## Documentation Pages
 
