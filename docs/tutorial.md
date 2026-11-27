@@ -131,11 +131,11 @@ You can zoom, pan, configure axes, and save snapshots using the built-in [Matplo
 
 | Icon | Action | Description |
 |---|---|---|
-| ![Calculate Pattern](img/calculator.png) | **Calculate Pattern** (`Ctrl+R`) | Evaluates the forward model with the current parameters and plots **Fit** and **Background** against **Source**. |
-| ![Perform Fit](img/fit.png) | **Perform Fit** (`Ctrl+Shift+R`) | Runs nonlinear least-squares optimization in a background thread for all checked parameters. |
-| ![Abort](img/stop.png) | **Abort** | Cooperatively cancels the active fit thread cleanly after the current function evaluation. |
-| ![Export Last Fit](img/export_icon.png) | **Export Last Fit** | Exports the most recent calculation or fit results to files (see below). |
-| ![Back](img/back_button.png) ![Forward](img/forward_button.png) | **History Navigation** (`Alt+Left` / `Alt+Right`) | Steps backward and forward through previous parameter sets stored in session history. |
+| <img src="img/calculator.png" alt="Calculate Pattern" width="36"> | **Calculate Pattern** (`Ctrl+R`) | Evaluates the forward model with the current parameters and plots **Fit** and **Background** against **Source**. |
+| <img src="img/fit.png" alt="Perform Fit" width="36"> | **Perform Fit** (`Ctrl+Shift+R`) | Runs nonlinear least-squares optimization in a background thread for all checked parameters. |
+| <img src="img/stop.png" alt="Abort" width="36"> | **Abort** | Cooperatively cancels the active fit thread cleanly after the current function evaluation. |
+| <img src="img/export_icon.png" alt="Export Last Fit" width="36"> | **Export Last Fit** | Exports the most recent calculation or fit results to files (see below). |
+| <img src="img/back_button.png" alt="Back" width="36"> <img src="img/forward_button.png" alt="Forward" width="36"> | **History Navigation** (`Alt+Left` / `Alt+Right`) | Steps backward and forward through previous parameter sets stored in session history. |
 
 ---
 
