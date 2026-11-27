@@ -3,6 +3,7 @@ import ujson
 import sys
 import os
 import signal
+import threading
 from pathlib import Path
 # Force matplotlib to use PySide6
 os.environ['QT_API'] = 'pyside6'
@@ -22,12 +23,11 @@ if os.path.exists(font_path):
 matplotlib.rcParams['font.sans-serif'] = ['OpenSans', 'Noto Sans CJK JP', 'Arial Unicode MS', 'SimHei', 'DejaVu Sans']
 matplotlib.rcParams['axes.unicode_minus'] = False
 try:
-    from matplotlib.backends.backend_qt5agg import (
+    from matplotlib.backends.backend_qtagg import (
         FigureCanvasQTAgg as FigureCanvas,
         NavigationToolbar2QT as NavigationToolbar)
 except ImportError:
-    # Fallback or try qt_compat
-    from matplotlib.backends.backend_qt4agg import (
+    from matplotlib.backends.backend_qt5agg import (
         FigureCanvasQTAgg as FigureCanvas,
         NavigationToolbar2QT as NavigationToolbar)
 
@@ -47,7 +47,7 @@ if hasattr(sys, 'frozen') and sys.platform == 'darwin':
     print("Detected a frozen application and extracting the appropriate file directory format")
     base_directory = os.path.join(os.path.dirname(sys.executable))
 else:
-    base_directory = '.'
+    base_directory = os.path.dirname(os.path.abspath(__file__))
 
 
 user_data_directory = appdirs.user_data_dir("CarbonXS_GUI")
@@ -56,12 +56,13 @@ user_data_directory = appdirs.user_data_dir("CarbonXS_GUI")
 
 
 from carbonxs_core import CarbonXSModel
-from carbonxs_fit import CarbonXSFit
+from carbonxs_fit import CarbonXSFit, FitAbortedError
 
 class WorkerThread(QtCore.QThread):
     finished_signal = QtCore.Signal(object) # Emits result dict
     error_signal = QtCore.Signal(str)
     loss_signal = QtCore.Signal(float)
+    aborted_signal = QtCore.Signal()
 
     def __init__(self, mode, params, settings, data=None, refine_flags=None):
         super(WorkerThread, self).__init__()
@@ -70,6 +71,10 @@ class WorkerThread(QtCore.QThread):
         self.settings = settings
         self.data = data
         self.refine_flags = refine_flags
+        self.abort_event = threading.Event()
+
+    def request_abort(self):
+        self.abort_event.set()
         
     def run(self):
         try:
@@ -85,63 +90,90 @@ class WorkerThread(QtCore.QThread):
             model.BW = self.settings['beam_width']
             model.n_layers_model = int(self.settings['number_layers']) + 1 
             
+            theta_min = self.settings['theta_min']
+            theta_max = self.settings['theta_max']
+            nskip = max(1, int(self.settings.get('nskip', 1)))
+
             if self.mode == 'calculate':
                 model.set_parameters(self.params, model.n_layers_model)
-                
-                # Generate S array based on theta range
-                theta_min = self.settings['theta_min']
-                theta_max = self.settings['theta_max']
-                
+
                 if self.data is not None and len(self.data[0]) > 0:
-                    x_array = self.data[0]
+                    x_raw = np.asarray(self.data[0], dtype=np.float64)
+                    mask = (x_raw >= theta_min) & (x_raw <= theta_max)
+                    x_array = x_raw[mask][::nskip]
+                    if len(x_array) == 0:
+                        raise ValueError("No data points within theta_min..theta_max range.")
                 else:
-                    x_array = np.arange(theta_min, theta_max + 0.01, 0.1)
-                    
+                    x_array = np.arange(theta_min, theta_max + 0.01, 0.05)
+
                 theta_rad = np.radians(x_array / 2.0)
                 s_array = 2 * np.sin(theta_rad) / model.LAM
-                
+
                 # Use model.params (rescaled)
                 y_calc = model.all_inten(s_array, model.params)
-                
+
                 result = {
                     'mode': 'calculate',
                     'x': x_array,
                     'y_calc': y_calc,
-                    'params': self.params # Original params
+                    'params': self.params  # Original params
                 }
                 self.finished_signal.emit(result)
-                
+
             elif self.mode == 'fit':
                 fitter = CarbonXSFit(model)
-                x_obs = self.data[0]
-                y_obs = self.data[1]
-                
+                x_raw = np.asarray(self.data[0], dtype=np.float64)
+                y_raw = np.asarray(self.data[1], dtype=np.float64)
+                mask = (x_raw >= theta_min) & (x_raw <= theta_max)
+                x_obs = x_raw[mask][::nskip]
+                y_obs = y_raw[mask][::nskip]
+                if len(x_obs) == 0:
+                    raise ValueError("No data points within theta_min..theta_max range.")
+
                 # Get max function evaluations from iterations setting
-                max_nfev = int(self.settings.get('iterations', 100)) * 100  # Scale by 100 for reasonable limit
-                print(f"DEBUG: Starting fit with max_nfev={max_nfev}")
-                
+                max_nfev = int(self.settings.get('iterations', 100)) * 100
+                epsilon = float(self.settings.get('epsilon', 1e-8))
+                print(f"DEBUG: Starting fit with max_nfev={max_nfev}, n_pts={len(x_obs)}, tol={epsilon}")
+
                 # Define loss callback
                 def loss_callback(cost):
                     self.loss_signal.emit(cost)
 
-                final_params, res = fitter.fit(self.params, self.refine_flags, x_obs, y_obs, max_nfev=max_nfev, loss_callback=loss_callback)
-                
+                final_params, res = fitter.fit(
+                    self.params,
+                    self.refine_flags,
+                    x_obs,
+                    y_obs,
+                    max_nfev=max_nfev,
+                    loss_callback=loss_callback,
+                    ftol=epsilon,
+                    xtol=epsilon,
+                    abort_event=self.abort_event,
+                )
+
                 # Recalculate pattern with final params
                 model.set_parameters(final_params, model.n_layers_model)
                 theta_rad = np.radians(x_obs / 2.0)
                 s_array = 2 * np.sin(theta_rad) / model.LAM
                 y_calc = model.all_inten(s_array, model.params)
-                
+
+                stats = fitter.compute_fit_statistics(final_params, self.refine_flags, res)
+
                 result = {
                     'mode': 'fit',
                     'x': x_obs,
+                    'y_obs': y_obs,
                     'y_calc': y_calc,
+                    'initial_params': list(self.params),
                     'final_params': final_params,
-                    'success': res.success,
-                    'message': res.message
+                    'success': res.success if res is not None else True,
+                    'message': res.message if res is not None else 'No parameters selected for refinement',
+                    'stats': stats,
                 }
                 self.finished_signal.emit(result)
                 
+        except FitAbortedError:
+            self.aborted_signal.emit()
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -186,7 +218,8 @@ class TextFileViewer(QtGui.QDialog, Ui_Dialog):
         self.setWindowTitle('Load a Text File')
 
     def load_contents(self, filename):
-        text = open(filename).read()
+        with open(filename, 'r') as f:
+            text = f.read()
         self.text_display.setPlainText(text)
 
 class ConsoleStream(QtCore.QObject):
@@ -198,6 +231,12 @@ class ConsoleStream(QtCore.QObject):
 
     def write(self, message):
         self.message.emit(str(message))
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
 
 
 class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
@@ -420,9 +459,10 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
                          }
 
-        config_file = open(os.path.join(user_data_directory, 'config','config.json'), 'w')
-
-        ujson.dump(configuration, config_file, indent=4)
+        config_dir = os.path.join(user_data_directory, 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        with open(os.path.join(config_dir, 'config.json'), 'w') as config_file:
+            ujson.dump(configuration, config_file, indent=4)
 
 
     def first_time_app_setup(self):
@@ -468,6 +508,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                          os.path.join(user_data_directory, 'examples'))
 
 
+    def get_runtime_output_dir(self):
+        return os.path.join(user_data_directory, 'last_run')
+
     def data_init(self):
         """"
         On startup, read the last used Carbon.INP file
@@ -476,23 +519,28 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         if not os.path.exists(user_data_directory):
             self.first_time_app_setup()
 
-
-        # Attempts to load a Carbon.INP file if it exists
+        # Prefer last runtime carbon.inp, fall back read-only to carbonxs/carbon.inp
+        last_inp = os.path.join(self.get_runtime_output_dir(), 'carbon.inp')
+        default_inp = os.path.join(base_directory, 'carbonxs', 'carbon.inp')
         try:
-            self.read_carboninp(os.path.join(base_directory, 'carbonxs', 'carbon.inp'))
-
-            print("Loaded most recently used parameters successfully from 'carbonxs' directory.")
+            if os.path.exists(last_inp):
+                self.read_carboninp(last_inp)
+                print("Loaded most recently used parameters successfully from user data directory.")
+            else:
+                self.read_carboninp(default_inp)
+                print("Loaded default parameters successfully from 'carbonxs' directory.")
         except IOError:
-            print("No previous parameters found in 'carbonxs' directory.")
+            print("No previous parameters found.")
 
         # Clears any SCAN.DAT file already in carbonxs directory
         if 'SCAN.DAT' in os.listdir(os.path.join(base_directory, 'carbonxs')):
             os.remove(os.path.join(base_directory, 'carbonxs', 'SCAN.DAT'))
 
         # Read in the previously written configuration file
-        if 'config.json' in os.listdir(os.path.join(user_data_directory, 'config')):
-            config_file = open(os.path.join(user_data_directory, 'config', 'config.json'),'r')
-            config = ujson.load(config_file)
+        config_dir = os.path.join(user_data_directory, 'config')
+        if os.path.exists(config_dir) and 'config.json' in os.listdir(config_dir):
+            with open(os.path.join(config_dir, 'config.json'), 'r') as config_file:
+                config = ujson.load(config_file)
 
             try:
                 self.lock_y_axis.setChecked(config['program_config']['lock_y'])
@@ -754,30 +802,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.console.insertPlainText(message)
         self.console.moveCursor(QtGui.QTextCursor.End)
 
-    def on_process_message(self):
-        """
-        Method for reading messages from the carbonxs.exe process
-
-        :return:
-        """
-
-        self.console.moveCursor(QtGui.QTextCursor.End)
-
-        message = str(self.fitting_process.readAll())
-        self.console.insertPlainText(message)
-        self.console.moveCursor(QtGui.QTextCursor.End)
-
-        # if a singular matrix is detected raise the option to abort the fit.
-        if "Singular matrix." in message:
-            reply = QtGui.QMessageBox.critical(self, 'Singular matrix detected.',
-                                               "Singular matrix detected. Abort?", QtGui.QMessageBox.Yes |
-                                               QtGui.QMessageBox.No, QtGui.QMessageBox.Yes)
-
-            if reply == QtGui.QMessageBox.Yes:
-                self.abort_fit_process()
-
-
-
+        # Remove dead QProcess handler on_process_message (replaced by WorkerThread)
     def addmpl(self, fig):
         """
         Add a Matplotlib object to the plot
@@ -906,10 +931,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.menu_start_fit.setStatusTip('Start Fit Process')
         self.menu_abort_fit.setStatusTip('Abort Fit Process')
 
-        self.menu_calculate_pattern.triggered.connect(self.calculate_pattern)
-        self.menu_start_fit.triggered.connect(self.call_fit_program)
-        self.menu_abort_fit.triggered.connect(self.abort_fit_process)
-
         self.back_button.setShortcut(QtGui.QKeySequence.Back)
         self.forward_button.setShortcut(QtGui.QKeySequence.Forward)
 
@@ -949,7 +970,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             return
 
 
-        pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
+        pattern_filename = os.path.join(self.get_runtime_output_dir(), 'carbon.dat')
+        if not os.path.exists(pattern_filename):
+            pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
 
         self.x_fit_data = []
         self.y_fit_data = []
@@ -957,11 +980,11 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
 
         fit_color = "#fc8d62"
-        pattern_file = open(pattern_filename, 'r')
-        for line in pattern_file.readlines():
-            data_elements = line.split()
-            self.x_fit_data.append(float(data_elements[0]))
-            self.y_fit_data.append(float(data_elements[2]))
+        with open(pattern_filename, 'r') as pattern_file:
+            for line in pattern_file.readlines():
+                data_elements = line.split()
+                self.x_fit_data.append(float(data_elements[0]))
+                self.y_fit_data.append(float(data_elements[2]))
 
         interpolated_y_data = np.interp(np.array(self.x_data), np.array(self.x_fit_data), np.array(self.y_fit_data))
 
@@ -1047,8 +1070,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         previous_filename = self.current_filename
 
         if full_path:
-            input_file = open(full_path, 'r')
-
             directory, filename = os.path.split(full_path)
             if full_path.endswith('.mdi'):
 
@@ -1127,9 +1148,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
                 try:
                     if separator:
-                        plot_data = np.loadtxt(input_file, skiprows=header_lines, delimiter=separator)
+                        plot_data = np.loadtxt(full_path, skiprows=header_lines, delimiter=separator)
                     else:
-                        plot_data = np.loadtxt(input_file, skiprows=header_lines)
+                        plot_data = np.loadtxt(full_path, skiprows=header_lines)
 
                     self.x_data = plot_data[:, 0]
                     self.y_data = plot_data[:, 1]
@@ -1163,7 +1184,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         :return:
         """
         if from_file:
-            pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
+            pattern_filename = os.path.join(self.get_runtime_output_dir(), 'carbon.dat')
+            if not os.path.exists(pattern_filename):
+                pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
 
             self.prev_x_fit = self.x_fit_data
             self.prev_y_fit = self.y_fit_data
@@ -1225,6 +1248,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             self.loss_data = []
             
         self.loss_data.append(loss)
+
+        if not hasattr(self, 'ax_loss') or self.ax_loss not in self.fig.axes:
+            return
         
         # Only redraw every N points to avoid freezing GUI
         if len(self.loss_data) % 10 == 0:
@@ -1236,8 +1262,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             self.ax_loss.grid(True)
             self.ax_loss.set_yscale('log')
             self.ax_loss.tick_params(axis='both', which='major', labelsize=10)
-            # Use scientific notation for y-axis if values are small/large
-            # self.ax_loss.ticklabel_format(style='sci', axis='y', scilimits=(0,0)) # Not needed for log scale
             
             self.canvas.draw()
 
@@ -1364,7 +1388,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         if fname:
 
-            data_file = open(fname, 'w')
             directory, _ = os.path.split(fname)
             self.default_diffsettings_export_dir = directory
 
@@ -1378,8 +1401,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
                                        }
 
-
-            ujson.dump(diffractometer_settings, data_file, indent = 4)
+            with open(fname, 'w') as data_file:
+                ujson.dump(diffractometer_settings, data_file, indent = 4)
 
             print('Exported Diffractometer Settings to: %s'%fname)
             self.statusBar().showMessage('Exported Diffractometer Settings to: %s'%fname)
@@ -1396,22 +1419,22 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         if self.default_diffsettings_import_dir:
 
-            fname, opened = QtGui.QFileDialog.getOpenFileName(self, 'Export Diffractometer Settings',
+            fname, opened = QtGui.QFileDialog.getOpenFileName(self, 'Import Diffractometer Settings',
                                                               self.default_diffsettings_import_dir, filter="*.json")
         else:
 
-            fname, opened = QtGui.QFileDialog.getOpenFileName(self, 'Export Diffractometer Settings',
+            fname, opened = QtGui.QFileDialog.getOpenFileName(self, 'Import Diffractometer Settings',
                                                           os.path.join(user_data_directory,
                                                            'config','diffractometer settings'), filter="*.json")
 
         if fname:
 
-            data_file = open(fname, 'r')
             directory, _ = os.path.split(fname)
             self.default_diffsettings_import_dir = directory
 
             try:
-                diffractometer_settings = ujson.load(data_file)
+                with open(fname, 'r') as data_file:
+                    diffractometer_settings = ujson.load(data_file)
 
                 self.wavelength.setValue(diffractometer_settings['wavelength'])
                 self.beam_width.setValue(diffractometer_settings['beam_width'])
@@ -1453,8 +1476,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         if fname:
 
-            data_file = open(fname, 'w')
-
             directory, _ = os.path.split(fname)
             self.default_fitparams_export_dir = directory
 
@@ -1467,8 +1488,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             # Include the number of layers used in this model with the fitting parameters export
             fitting_params['number_layers'] = self.number_layers.currentIndex()+1
 
-
-            ujson.dump(fitting_params, data_file, indent = 4)
+            with open(fname, 'w') as data_file:
+                ujson.dump(fitting_params, data_file, indent = 4)
 
             print('Exported Fitting Parameters to: %s'%fname)
             self.statusBar().showMessage('Exported Fitting Parameters to: %s'%fname)
@@ -1493,12 +1514,12 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         if fname:
 
             try:
-                data_file = open(fname, 'r')
                 directory, _ = os.path.split(fname)
 
                 self.default_fitparams_import_dir = directory
 
-                fitting_params = ujson.load(data_file)
+                with open(fname, 'r') as data_file:
+                    fitting_params = ujson.load(data_file)
 
 
                 for index, label in enumerate(self.parameter_labels):
@@ -1578,7 +1599,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         if fname:
 
-            data_file = open(fname, 'w')
             directory, _ = os.path.split(fname)
             self.default_fitsettings_export_dir = directory
 
@@ -1601,7 +1621,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
             fitting_settings['enable_gc'] = False
             fitting_settings['gc_delta']  = 0
-            ujson.dump(fitting_settings, data_file, indent = 4)
+            with open(fname, 'w') as data_file:
+                ujson.dump(fitting_settings, data_file, indent = 4)
 
             print('Exported Fitting Settings to: %s'%fname)
             self.statusBar().showMessage('Exported Fitting Settings to: %s'%fname)
@@ -1627,11 +1648,11 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         if fname:
 
             try:
-                data_file = open(fname, 'r')
                 directory, _ = os.path.split(fname)
                 self.default_fitsettings_import_dir = directory
 
-                fitting_settings = ujson.load(data_file)
+                with open(fname, 'r') as data_file:
+                    fitting_settings = ujson.load(data_file)
 
                 self.theta_min_value.setValue(fitting_settings['theta min'])
                 self.theta_max_value.setValue(fitting_settings['theta max'])
@@ -1653,7 +1674,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 self.epsilon.setValue(fitting_settings['epsilon'])
 
                 print('Imported Fitting Settings from: %s'%fname)
-                self.statusBar().showMessage('Imported Fitting Settings to: %s'%fname)
+                self.statusBar().showMessage('Imported Fitting Settings from: %s'%fname)
 
 
             except ValueError:
@@ -1700,63 +1721,62 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         """
 
 
-        export_file = open(destination, 'w')
+        with open(destination, 'w') as export_file:
+            export_file.write("SCAN.DAT\n")
 
-        export_file.write("SCAN.DAT\n")
+            #
+            export_file.write("  %5.2f    %5.2f %6.6f       %d  "%(self.theta_min_value.value(),
+                                                            self.theta_max_value.value(),
+                                                            self.wavelength.value(),
+                                                            self.nskip.value())+
+                              "            Thmin   Thmax   Lambda  Nskip\n")
 
-        #
-        export_file.write("  %5.2f    %5.2f %6.6f       %d  "%(self.theta_min_value.value(),
-                                                        self.theta_max_value.value(),
-                                                        self.wavelength.value(),
-                                                        self.nskip.value())+
-                          "            Thmin   Thmax   Lambda  Nskip\n")
-
-        if self.number_layers.currentIndex() == 0:
-            num_layers = 1
-        else:
-            num_layers = 2
-        export_file.write("     18        %d        %d       %d  "%(self.n_phi.value(),
-                                                                   self.n_sg.value(),
-                                                                   num_layers
-                                                                   )
-                           +"            Npar    Nphi    Nsg     Nlayer\n")
-
-        export_file.write(" %6.3f   %6.3f   %6.3f  %6.3f   %6.3f"%(self.sample_density.value(),
-                                                                                 self.goniometer_radius.value(),
-                                                                                 self.sample_depth.value(),
-                                                                                 self.sample_width.value(),
-                                                                                 self.beam_width.value()
-
-                                                                                 )
-                          +"     Rdens   L0      Wd      Ww      Bw\n")
-
-
-        if not disable_fit:
-            iterations = self.iterations.value()
-        else:
-            iterations = 0
-
-        export_file.write("      %d   %6.5f                        "%(iterations, self.epsilon.value())+
-                          "       Itmax   Eps\n")
-
-        enable_gc = 0
-
-        export_file.write("      %d   %6.5f                        "%(enable_gc, 0.0)+
-                          "       Itest   Dx\n")
-
-        for index, label in enumerate(self.parameter_labels):
-
-            param_value = self.parameter_list[index].value()
-            param_str = ("%5.4E"%param_value).rjust(12)
-            if self.parameter_enable_list[index].isChecked():
-                param_str += "  1    "
+            if self.number_layers.currentIndex() == 0:
+                num_layers = 1
             else:
-                param_str += "  0    "
+                num_layers = 2
+            export_file.write("     18        %d        %d       %d  "%(self.n_phi.value(),
+                                                                       self.n_sg.value(),
+                                                                       num_layers
+                                                                       )
+                               +"            Npar    Nphi    Nsg     Nlayer\n")
 
-            param_str += label.text().ljust(70)
-            param_str += "\n"
+            export_file.write(" %6.3f   %6.3f   %6.3f  %6.3f   %6.3f"%(self.sample_density.value(),
+                                                                                     self.goniometer_radius.value(),
+                                                                                     self.sample_depth.value(),
+                                                                                     self.sample_width.value(),
+                                                                                     self.beam_width.value()
 
-            export_file.write(param_str)
+                                                                                     )
+                              +"     Rdens   L0      Wd      Ww      Bw\n")
+
+
+            if not disable_fit:
+                iterations = self.iterations.value()
+            else:
+                iterations = 0
+
+            export_file.write("      %d   %6.5f                        "%(iterations, self.epsilon.value())+
+                              "       Itmax   Eps\n")
+
+            enable_gc = 0
+
+            export_file.write("      %d   %6.5f                        "%(enable_gc, 0.0)+
+                              "       Itest   Dx\n")
+
+            for index, label in enumerate(self.parameter_labels):
+
+                param_value = self.parameter_list[index].value()
+                param_str = ("%5.4E"%param_value).rjust(12)
+                if self.parameter_enable_list[index].isChecked():
+                    param_str += "  1    "
+                else:
+                    param_str += "  0    "
+
+                param_str += label.text().ljust(70)
+                param_str += "\n"
+
+                export_file.write(param_str)
 
 
     def import_from_carboninp(self):
@@ -1789,9 +1809,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         """
 
 
-        config_file = open(filename, 'r')
-
-        data_lines = config_file.readlines()
+        with open(filename, 'r') as config_file:
+            data_lines = config_file.readlines()
 
         # Thetamin, theta max, wavelength, nskip
         data_elements_1 = data_lines[1].split()
@@ -1863,13 +1882,12 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         """
 
 
-        scan_file = open(output_file, 'w')
+        with open(output_file, 'w') as scan_file:
+            for x, y in zip(*(self.x_data, self.y_data)):
 
-        for x, y in zip(*(self.x_data, self.y_data)):
+                data_line = "%4.2f\t%4.2f\n"%(x, y)
 
-            data_line = "%4.2f\t%4.2f\n"%(x, y)
-
-            scan_file.write(data_line)
+                scan_file.write(data_line)
 
     def pre_run_sanity_check(self, fit_mode):
         """
@@ -2019,19 +2037,20 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         return settings
 
     def write_results_to_disk(self, result):
-        # Ensure carbonxs directory exists
-        out_dir = os.path.join(base_directory, 'carbonxs')
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
+        # Ensure runtime output directory exists (never overwrite carbonxs/ reference files)
+        out_dir = self.get_runtime_output_dir()
+        os.makedirs(out_dir, exist_ok=True)
             
         # Write carbon.dat
         # Format: 2theta, obs, calc
-        # If calculate mode, obs might be missing or zeros
         x = result['x']
         y_calc = result['y_calc']
-        y_obs = np.zeros_like(x)
-        if len(self.y_data) == len(x):
+        if 'y_obs' in result and len(result['y_obs']) == len(x):
+            y_obs = result['y_obs']
+        elif len(self.y_data) == len(x):
             y_obs = self.y_data
+        else:
+            y_obs = np.zeros_like(x)
             
         with open(os.path.join(out_dir, 'carbon.dat'), 'w') as f:
             for i in range(len(x)):
@@ -2047,21 +2066,49 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 f.write("Success: %s\n" % result['success'])
                 f.write("Message: %s\n" % result['message'])
 
+    def _disconnect_worker_signals(self):
+        if not self.worker_thread:
+            return
+        for sig, slot in (
+            (self.worker_thread.finished_signal, self.on_worker_finished),
+            (self.worker_thread.error_signal, self.on_worker_error),
+            (self.worker_thread.aborted_signal, self.on_worker_aborted),
+            (self.worker_thread.loss_signal, self.update_loss_plot),
+        ):
+            meta_method = QtCore.QMetaMethod.fromSignal(sig)
+            if self.worker_thread.isSignalConnected(meta_method):
+                try:
+                    sig.disconnect(slot)
+                except (RuntimeError, TypeError):
+                    pass
+
+    def on_worker_aborted(self):
+        if self.worker_thread:
+            self._disconnect_worker_signals()
+            self.worker_thread.deleteLater()
+        self.worker_thread = None
+        print("Fitting/calculation aborted by user.")
+        self.menu_start_fit.setEnabled(True)
+        self.menu_calculate_pattern.setEnabled(True)
+        self.calculate_pattern_button.setEnabled(True)
+        self.fit_pattern_button.setEnabled(True)
+        self.menu_abort_fit.setEnabled(False)
+        self.abort_fit_button.setEnabled(False)
+        self.check_undo_index()
+
     def on_worker_finished(self, result):
         # Properly disconnect signals and schedule deletion before clearing reference
         if self.worker_thread:
-            try:
-                self.worker_thread.finished_signal.disconnect()
-                self.worker_thread.error_signal.disconnect()
-                self.worker_thread.loss_signal.disconnect()
-            except:
-                pass  # Signals may already be disconnected
-            
+            self._disconnect_worker_signals()
             # Schedule Qt cleanup at appropriate time
             self.worker_thread.deleteLater()
         
         self.worker_thread = None
-        
+
+        if len(self.x_fit_data) > 0:
+            self.prev_x_fit = list(self.x_fit_data)
+            self.prev_y_fit = list(self.y_fit_data)
+
         if result['mode'] == 'calculate':
             self.x_fit_data = list(result['x'])
             self.y_fit_data = list(result['y_calc'])
@@ -2093,8 +2140,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.fit_pattern_button.setEnabled(True)
         self.menu_abort_fit.setEnabled(False)
         self.abort_fit_button.setEnabled(False)
-        self.back_button.setEnabled(True)
-        self.forward_button.setEnabled(True)
         
         # Undo buffer logic
         if self.append_to_buffer:
@@ -2104,7 +2149,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
              self.undo_buffer.append(FittingParams(self.parameter_list, self.parameter_enable_list,
                                                    self.fit_settings, self.diff_settings))
              self.undo_index = len(self.undo_buffer)-1
-             self.check_undo_index()
+        self.check_undo_index()
              
         # Export dialog (only for fit)
         if result['mode'] == 'fit':
@@ -2117,13 +2162,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
     def on_worker_error(self, error_msg):
         # Properly disconnect signals and schedule deletion before clearing reference
         if self.worker_thread:
-            try:
-                self.worker_thread.finished_signal.disconnect()
-                self.worker_thread.error_signal.disconnect()
-                self.worker_thread.loss_signal.disconnect()
-            except:
-                pass  # Signals may already be disconnected
-            
+            self._disconnect_worker_signals()
             # Schedule Qt cleanup at appropriate time
             self.worker_thread.deleteLater()
         
@@ -2170,11 +2209,14 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             print("Worker thread is already running!")
             return
 
+        self.loss_data = []
+        self.plot_loaded_data()
+
         self.worker_thread = WorkerThread('fit', params, settings, data, refine_flags)
         self.worker_thread.finished_signal.connect(self.on_worker_finished)
         self.worker_thread.error_signal.connect(self.on_worker_error)
+        self.worker_thread.aborted_signal.connect(self.on_worker_aborted)
         self.worker_thread.loss_signal.connect(self.update_loss_plot)
-        self.loss_data = []
         self.worker_thread.start()
         
         # Disable buttons
@@ -2215,6 +2257,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.worker_thread = WorkerThread('calculate', params, settings, data)
         self.worker_thread.finished_signal.connect(self.on_worker_finished)
         self.worker_thread.error_signal.connect(self.on_worker_error)
+        self.worker_thread.aborted_signal.connect(self.on_worker_aborted)
         self.worker_thread.start()
         
         # Disable buttons
@@ -2224,90 +2267,26 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.fit_pattern_button.setEnabled(False)
         self.menu_abort_fit.setEnabled(True)
         self.abort_fit_button.setEnabled(True)
+        self.back_button.setEnabled(False)
+        self.forward_button.setEnabled(False)
 
     def abort_fit_process(self):
         """
-        Kills the currently running worker thread
+        Requests cooperative cancellation of the currently running worker thread.
         """
         if self.worker_thread and self.worker_thread.isRunning():
-            self.worker_thread.terminate()
-            self.worker_thread.wait()
-            
-        self.menu_abort_fit.setEnabled(False)
-        self.abort_fit_button.setEnabled(False)
-
-        self.menu_start_fit.setEnabled(True)
-        self.menu_calculate_pattern.setEnabled(True)
-        self.calculate_pattern_button.setEnabled(True)
-        self.fit_pattern_button.setEnabled(True)
-        self.abort_flag = True
-        self.check_undo_index()
-
-    def fitting_finished(self, append_to_buffer):
-        """
-        Method to handle completion of fitting process
-        :return:
-        """
-
-        if not self.abort_flag:
-
-            print("CarbonXS Process Complete")
-
-            # Exit Code 0 indicates successful completion
-            if self.fitting_process.exitCode() == 0:
-
-                if not self.pattern_calc_flag:
-                    print("Reading new carbon.inp data and plotting new data")
-                    self.read_carboninp(os.path.join(base_directory, 'carbonxs', 'carbon.inp'))
-
-
-
-                self.plot_fit_results()
-
-                # If in fitting mode, give option to export fitting results
-                if not self.pattern_calc_flag:
-
-                    reply = QtGui.QMessageBox.question(self, 'Fit Completed',
-                                                       "Export the results?", QtGui.QMessageBox.Yes |
-                                                       QtGui.QMessageBox.No, QtGui.QMessageBox.No)
-                    if reply == QtGui.QMessageBox.Yes:
-                        self.export_fit_results()
-
-                if self.append_to_buffer:
-                    # Truncate buffer at current index
-
-                    if self.undo_index < len(self.undo_buffer) - 1 and self.undo_buffer:
-                        self.undo_buffer = self.undo_buffer[:self.undo_index+1]
-
-
-                    self.undo_buffer.append(FittingParams(self.parameter_list, self.parameter_enable_list,
-                                                          self.fit_settings, self.diff_settings))
-                    self.undo_index = len(self.undo_buffer)-1
-
-                    self.check_undo_index()
-
-            # Exit Code 1 indicates a crash in CarbonXS
-            # Do NOT load any settings the program wrote
-            elif self.fitting_process.exitCode() == 1:
-                print("Error: Fit failed due to crash in CarbonXS")
-            else:
-                print("Other error occurred")
-
-            # Re-enable buttons to start process and disable buttons that abort process
+            self.worker_thread.request_abort()
             self.menu_abort_fit.setEnabled(False)
             self.abort_fit_button.setEnabled(False)
-
+        else:
+            self.menu_abort_fit.setEnabled(False)
+            self.abort_fit_button.setEnabled(False)
             self.menu_start_fit.setEnabled(True)
             self.menu_calculate_pattern.setEnabled(True)
             self.calculate_pattern_button.setEnabled(True)
             self.fit_pattern_button.setEnabled(True)
-
-
-        else:
-            print("\n\n Fitting process aborted")
-
-            self.abort_flag = False
-
+            self.check_undo_index()
+        self.abort_flag = True
 
     def export_fit_results(self):
         """
@@ -2343,10 +2322,12 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 self.default_export_dir = directory
 
             else:
+                out_dir = self.get_runtime_output_dir()
+                out_files = os.listdir(out_dir) if os.path.exists(out_dir) else []
                 for data_file, export_suffix in [('carbon.out', '_carbon_out.txt'), ('carbon.dat', '_carbon_dat.txt'), ('carbon.inp','_carbon.inp')]:
 
-                    # Checks if the files exist in the directory
-                    if data_file in os.listdir('carbonxs'):
+                    # Checks if the files exist in the runtime output directory
+                    if data_file in out_files:
 
                         destination = fname + export_suffix
                         directory, filename = os.path.split(destination)
@@ -2361,7 +2342,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                             if reply == QtGui.QMessageBox.Yes:
 
                                 self.default_export_dir = directory
-                                shutil.copy(os.path.join(base_directory, 'carbonxs', data_file), fname + export_suffix)
+                                shutil.copy(os.path.join(out_dir, data_file), fname + export_suffix)
                                 print("Copied %s file to %s. (Overwrote old file)" % (data_file, destination))
                             else:
                                 print("%s already exists. Did not overwrite." % destination)
@@ -2370,7 +2351,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
                             self.default_export_dir =directory
 
-                            shutil.copy(os.path.join(base_directory, 'carbonxs', data_file), destination)
+                            shutil.copy(os.path.join(out_dir, data_file), destination)
                             print("Copied %s file to %s" %(data_file, destination))
 
 
@@ -2486,16 +2467,10 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
     def closeEvent(self, event):
         if hasattr(self, 'worker_thread') and self.worker_thread is not None and self.worker_thread.isRunning():
             print("Stopping worker thread...")
-            # Disconnect signals before terminating
-            try:
-                self.worker_thread.finished_signal.disconnect()
-                self.worker_thread.error_signal.disconnect()
-                self.worker_thread.loss_signal.disconnect()
-            except:
-                pass  # Signals may already be disconnected
-            
-            self.worker_thread.terminate()
-            self.worker_thread.wait()
+            self._disconnect_worker_signals()
+            self.worker_thread.request_abort()
+            if not self.worker_thread.wait(5000):
+                print("Worker thread did not stop cleanly within timeout.")
             
         print("Closing program")
         self.write_config()
