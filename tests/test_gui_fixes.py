@@ -328,3 +328,30 @@ def test_fortran_carbon_out_and_fit_results_dialog(main_window, tmp_path):
     assert "1.2345" in dlg.summary_label.text()
     assert "67.2" in dlg.summary_label.text()
     dlg.close()
+
+
+def test_subplots_do_not_overlap(main_window):
+    """Fit Pattern subplot and Fitting Progress Loss label/ticks must not overlap."""
+    main_window.wavelength.setValue(1.5418)
+    main_window.theta_min_value.setValue(10.0)
+    main_window.theta_max_value.setValue(100.0)
+    main_window.x_data = [10.0, 50.0, 100.0]
+    main_window.y_data = [2000.0, 600.0, 250.0]
+    main_window.x_fit_data = [10.0, 50.0, 100.0]
+    main_window.y_fit_data = [2000.0, 600.0, 250.0]
+    main_window.loss_data = [2340.0, 2220.0, 2195.0]
+    main_window.canvas.resize(900, 500)
+
+    main_window.plot_loaded_data()
+    main_window.canvas.draw()
+    renderer = main_window.canvas.get_renderer()
+
+    left_bbox = main_window.ax.get_window_extent(renderer)
+    loss_ylabel_bbox = main_window.ax_loss.yaxis.label.get_window_extent(renderer)
+    assert loss_ylabel_bbox.x0 >= left_bbox.x1, (
+        f"Loss y-label (x0={loss_ylabel_bbox.x0:.1f}) overlaps left plot (x1={left_bbox.x1:.1f})"
+    )
+    for tick in main_window.ax_loss.get_yticklabels():
+        if tick.get_text():
+            tb = tick.get_window_extent(renderer)
+            assert tb.x0 >= left_bbox.x1, f"Loss tick '{tick.get_text()}' (x0={tb.x0:.1f}) overlaps left plot (x1={left_bbox.x1:.1f})"

@@ -407,7 +407,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         self.init_ui_elements()
 
-        self.fig = Figure()
+        self.fig = Figure(layout='constrained')
         self.ax = self.fig.add_subplot(111)
 
         self.x_data = []
@@ -1363,7 +1363,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.fig.clf()
         
         # Use GridSpec to create two subplots with width ratio 3:1
-        gs = GridSpec(1, 2, width_ratios=[3, 1])
+        gs = GridSpec(1, 2, width_ratios=[3, 1], figure=self.fig)
         self.ax = self.fig.add_subplot(gs[0])
         self.ax_loss = self.fig.add_subplot(gs[1])
 
