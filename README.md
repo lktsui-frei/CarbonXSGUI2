@@ -82,10 +82,23 @@ pip install -r requirements.txt
 After installing dependencies, run:
 
 ```bash
-python verify_installation.py
+uv run pytest tests/test_installation.py -v
 ```
 
-This will check that all required packages are installed and importable.
+This checks that all required packages (`numpy`, `scipy`, `matplotlib`, `PySide6`, `ujson`, `appdirs`, and internal modules) are installed and importable. To run the full test suite:
+
+```bash
+uv run pytest -v
+```
+
+## Documentation
+
+Full documentation is available in the [docs/](docs/README.md) folder:
+
+- [Documentation Overview](docs/README.md)
+- [Installation Guide](docs/installation.md)
+- [User Tutorial](docs/tutorial.md)
+- [References & Credits](docs/references.md)
 
 ## Running the Application
 
@@ -124,28 +137,36 @@ Example diffraction data and parameter files are provided in the `examples/` dir
 
 ## Development
 
-### Verification Scripts
+### Verification & Tests
 
-Two verification scripts are provided to test the Python port against the original Fortran implementation:
+Automated tests in `tests/` verify dependencies, physics parity against the original Fortran code, fitting reproducibility, and GUI/I/O behavior:
 
-- `verify_port.py` - Verifies core calculation logic
-- `verify_fit.py` - Verifies fitting algorithm
+- [tests/test_installation.py](tests/test_installation.py) - Verifies required dependencies and module imports
+- [tests/test_port_verification.py](tests/test_port_verification.py) - Verifies core calculation logic against Fortran reference behavior
+- [tests/test_fit.py](tests/test_fit.py) - Verifies fitting engine and reproducibility
+
+Run the entire suite with:
+
+```bash
+uv run pytest -v
+```
 
 ### Project Structure
 
 ```
-carbon_xs_gui/
+carbon_xs_gui_2/
 ├── CarbonXS_GUI.py          # Main GUI application
 ├── carbonxs_core.py         # Core calculation engine (ported from Fortran)
 ├── carbonxs_fit.py          # Fitting engine using scipy
-├── qt_compat.py             # PySide2 compatibility layer
+├── qt_compat.py             # PySide6 compatibility layer
 ├── scalable_mw.py           # Auto-generated Qt UI file
 ├── text_file_viewer.py      # Auto-generated Qt dialog
 ├── data_io.py               # Data import/export utilities
 ├── requirements.txt         # Python dependencies
 ├── examples/                # Example data files
+├── tests/                   # Automated pytest verification & regression suite
 ├── carbonxs/                # Original Fortran code (for reference)
-└── docs/                    # Documentation
+└── docs/                    # Markdown documentation and reference manuals
 ```
 
 ## License
