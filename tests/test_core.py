@@ -154,3 +154,26 @@ def test_gmod_smooth_near_singularity(model):
     assert abs(g_vals[2] - g0) < 1e-6, f"Cancellation error at l=4e-7: {g_vals[2]} vs {g0}"
     # Smooth monotonic decrease from l=0 for small l on (0,0) rod
     assert np.all(np.diff(np.concatenate([[g0], g_vals])) <= 1e-12)
+
+
+def test_phint_exact_s1_and_large_nphi(model):
+    """Test phint handles exact s == s1 without RuntimeWarning and does not truncate NPHI > 50."""
+    a_cell, d002, la, dab = 2.46, 3.35, 50.0, 0.0
+    s0 = np.sqrt(4.0 / 3.0) / a_cell
+    sig = (2.0 / np.sqrt(3.0 * np.pi) / la + dab * s0) / 2.0
+    s1 = s0 - model.NSG * sig
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ph_s1 = model.phint(1, 0, np.array([s1]), a_cell, d002, la, 10.0, 1.0, dab, 0.01, 0.1, 0.0, 0.0)
+
+    runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert len(runtime_warnings) == 0, f"Unexpected RuntimeWarnings: {[str(w.message) for w in runtime_warnings]}"
+    assert ph_s1[0] == 0.0
+
+    # NPHI=60 vs NPHI=40 at s=s0 should agree closely (< 1%) rather than truncating at 100 steps
+    model.NPHI = 40
+    ph_40 = model.phint(1, 0, np.array([s0]), a_cell, d002, la, 10.0, 1.0, dab, 0.01, 0.1, 0.0, 0.0)[0]
+    model.NPHI = 60
+    ph_60 = model.phint(1, 0, np.array([s0]), a_cell, d002, la, 10.0, 1.0, dab, 0.01, 0.1, 0.0, 0.0)[0]
+    assert abs(ph_60 - ph_40) / ph_40 < 0.01, f"NPHI=60 ({ph_60}) diverged from NPHI=40 ({ph_40})"

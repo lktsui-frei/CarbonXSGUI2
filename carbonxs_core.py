@@ -207,101 +207,45 @@ class CarbonXSModel:
         """
         Calculate Phi integral numerically for an array of s values
         """
-        s0 = np.sqrt(4.0/3.0 * (h**2 + k**2 + h*k)) / a_cell
-        
+        s_array = np.asarray(s_array, dtype=np.float64)
+        s0 = np.sqrt(4.0 / 3.0 * (h**2 + k**2 + h * k)) / a_cell
+
         # Determine integration limits in S
         sig = (2.0 / np.sqrt(3.0 * np.pi) / la + dab * s0) / 2.0
         s1 = s0 - self.NSG * sig
         s2 = s0 + self.NSG * sig
-        
-        # Masks for regions
-        mask_zero = s_array < s1
-        mask_full = (s_array >= s1) & (s_array < s2)
-        mask_two = s_array >= s2
-        
-        ph_int = np.zeros_like(s_array)
-        
-        # Pre-calculate phi limits
-        # Avoid division by zero or domain errors
-        ratio1 = np.clip(s1 / s_array, -1.0, 1.0)
-        ratio2 = np.clip(s2 / s_array, -1.0, 1.0)
-        
+
+        # Strict region masks matching CARBONXS.FOR (avoids 0/0 when s == s1)
+        mask_pos = s_array > 0.0
+        mask_full = mask_pos & (s_array > s1) & (s_array < s2)
+        mask_two = mask_pos & (s_array > s2)
+
+        ph_int = np.zeros_like(s_array, dtype=np.float64)
+        if not (np.any(mask_full) or np.any(mask_two)):
+            return ph_int
+
+        # Guard s_array <= 0 before division
+        s_safe = np.where(mask_pos, s_array, 1.0)
+        ratio1 = np.clip(s1 / s_safe, -1.0, 1.0)
+        ratio2 = np.clip(s2 / s_safe, -1.0, 1.0)
+
         phi1 = np.arccos(ratio1)
         phi2 = np.arccos(ratio2)
-        
-        # We need to integrate over phi.
-        # Instead of adaptive loop, use fixed grid.
-        # NPHI points.
-        
-        # Region 1: Full intersection (s1 <= s < s2)
-        # Integration range: [-phi1, phi1]
-        # dphi = (phi1 - (-phi1)) / (nphi_eff - 1) = 2*phi1 / (nphi_eff - 1)
-        # In original code: nphi1 = int(2 * phi1 / dphi) + 1
-        # where dphi = (phi1 - phi2) / (NPHI - 1)
-        # This is tricky because dphi depends on phi2 which is defined even if s < s2?
-        # Yes, phi2 is arccos(s2/s).
-        
-        dphi_base = (phi1 - phi2) / (self.NPHI - 1)
-        
-        # Handle Full Intersection
+
+        nphi_denom = max(int(self.NPHI) - 1, 1)
+        dphi_base = (phi1 - phi2) / float(nphi_denom)
+
+        # Handle Full Intersection (s1 < s < s2): phi2 == 0, so step count is 2*(NPHI-1) + 1
         if np.any(mask_full):
             s_full = s_array[mask_full]
             phi1_full = phi1[mask_full]
             dphi_full = dphi_base[mask_full]
-            
-            # Number of points varies per s, which is hard to vectorize perfectly.
-            # But we can use a fixed grid relative to phi1.
-            # Original code: phi starts at -phi1, steps by dphi until phi1.
-            # nphi1 = int(2 * phi1 / dphi) + 1
-            
-            # Let's approximate by using a fixed number of points scaled to cover [-phi1, phi1]
-            # Or better, construct a 2D grid (N_s, N_steps)
-            # Max steps might be large.
-            
-            # Let's try to match the original logic but vectorize the loop over steps.
-            # Max steps is roughly 2*phi1 / dphi.
-            # dphi is roughly (phi1 - phi2)/9.
-            # If s is close to s1, phi1 ~ 0, phi2 ~ 0.
-            # If s is close to s2, phi1 ~ arccos(s1/s2), phi2 ~ 0.
-            
-            # To keep it simple and vectorized, let's use a fixed grid of points for integration
-            # that covers the maximum possible range, and mask out invalid points?
-            # No, that's inefficient.
-            
-            # Alternative: Use a fixed number of points (e.g. 2*NPHI) for the integration
-            # and interpolate?
-            # Or just loop over a reasonable number of steps (e.g. 20) and sum.
-            
-            # Let's use the max nphi1 across the batch?
-            nphi1_vals = (2 * phi1_full / dphi_full).astype(np.intp) + 1
-            max_nphi1 = np.max(nphi1_vals) if len(nphi1_vals) > 0 else 0
-            
-            # Limit max steps to avoid memory explosion
-            max_nphi1 = min(max_nphi1, 100) 
-            
-            # Create grid: shape (max_nphi1, N_full)
-            steps = np.arange(max_nphi1)[:, np.newaxis]
+
+            nphi1 = 2 * nphi_denom + 1
+            steps = np.arange(nphi1)[:, np.newaxis]
             phi_grid = -phi1_full + steps * dphi_full
-            
-            # Mask points where step > nphi1_vals
-            valid_mask = steps < nphi1_vals
-            
-            # Compute integrand
-            # Flatten for computation then reshape?
-            # Or rely on broadcasting: s_full is (N_full,), phi_grid is (max_nphi1, N_full)
-            
-            # We need s0, etc for these points
-            # s0 is scalar (depends on h,k)
-            
-            # igran expects arrays of same shape or broadcastable
-            # s_full broadcast to (max_nphi1, N_full)
-            
+
             ig = self.igran(phi_grid, s_full, s0, h, k, d002, la, m, sm, dab, del_strain, pr, pt, po)
-            
-            # Zero out invalid points
-            ig[~valid_mask] = 0.0
-            
-            # Sum
             ph_int[mask_full] = np.sum(ig, axis=0) * dphi_full
             
         # Handle Two Intersections (s >= s2)
