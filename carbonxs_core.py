@@ -23,7 +23,9 @@ class CarbonXSModel:
         Sets the model parameters.
         params: list or array of 18 parameters.
         """
-        self.params = np.array(params)
+        self.params = np.asarray(params, dtype=np.float64).copy()
+        if len(self.params) != 18:
+            raise ValueError(f"Expected 18 parameters, got {len(self.params)}")
         self.n_layers_model = n_layers_model
         
         # Rescale for 2 layer model as in Fortran code
@@ -337,6 +339,8 @@ class CarbonXSModel:
         th = np.arcsin(s_array * self.LAM / 2.0)
         if ndat > 1:
             dth = th[1] - th[0]
+            if abs(dth) < 1e-15:
+                raise ValueError("Adjacent 2theta points must be distinct (dth == 0).")
         else:
             dth = 0.01
 

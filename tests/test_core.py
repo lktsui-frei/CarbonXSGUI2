@@ -177,3 +177,15 @@ def test_phint_exact_s1_and_large_nphi(model):
     model.NPHI = 60
     ph_60 = model.phint(1, 0, np.array([s0]), a_cell, d002, la, 10.0, 1.0, dab, 0.01, 0.1, 0.0, 0.0)[0]
     assert abs(ph_60 - ph_40) / ph_40 < 0.01, f"NPHI=60 ({ph_60}) diverged from NPHI=40 ({ph_40})"
+
+
+def test_set_parameters_float64_and_dth_zero_guard(model):
+    """Test set_parameters avoids integer truncation in 2-layer mode and all_inten rejects dth == 0."""
+    int_params = [1] * 18
+    model.set_parameters(int_params, n_layers_model=2)
+    assert np.isclose(model.params[10], 0.5), f"Expected 0.5, got {model.params[10]}"
+    assert np.isclose(model.params[11], 0.5), f"Expected 0.5, got {model.params[11]}"
+
+    s_dup = np.array([0.2, 0.2, 0.3])
+    with pytest.raises(ValueError):
+        model.all_inten(s_dup, model.params)
