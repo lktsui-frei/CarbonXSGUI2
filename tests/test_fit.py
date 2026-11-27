@@ -1,3 +1,4 @@
+import threading
 import pytest
 import numpy as np
 import os
@@ -222,3 +223,37 @@ def test_default_poisson_weights_bounds_and_tolerances(fitter, model):
     assert res_poisson.success and res_unweighted.success
     # Poisson weighting and unweighted weighting should produce different optimal Scale when residual != 0
     assert not np.isclose(final_poisson[0], final_unweighted[0], rtol=1e-4)
+
+
+def test_cooperative_abort(fitter, model):
+    """Test that setting abort_event raises FitAbortedError cleanly."""
+    from carbonxs_fit import FitAbortedError
+
+    params = np.zeros(18)
+    params[0] = 100.0
+    params[7] = 2.46
+    params[8] = 3.35
+    params[9] = 50.0
+    params[10] = 10.0
+    params[11] = 1.0
+
+    x_obs = np.linspace(20.0, 80.0, 41)
+    s_array = 2.0 * np.sin(np.radians(x_obs / 2.0)) / 1.5418
+    model.set_parameters(params, n_layers_model=1)
+    y_obs = model.all_inten(s_array, model.params)
+
+    init = params.copy()
+    init[0] = 50.0
+    refine_flags = [False] * 18
+    refine_flags[0] = True
+
+    abort_event = threading.Event()
+    calls = [0]
+
+    def on_loss(_cost):
+        calls[0] += 1
+        if calls[0] >= 2:
+            abort_event.set()
+
+    with pytest.raises(FitAbortedError):
+        fitter.fit(init, refine_flags, x_obs, y_obs, loss_callback=on_loss, abort_event=abort_event)

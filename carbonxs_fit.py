@@ -2,11 +2,15 @@ import numpy as np
 from scipy.optimize import least_squares
 from carbonxs_core import CarbonXSModel
 
+class FitAbortedError(Exception):
+    """Raised when a fit is cancelled via abort_event."""
+
+
 class CarbonXSFit:
     def __init__(self, model):
         self.model = model
         
-    def residuals(self, refined_params, full_params, refine_mask, s_array, y_obs, weights=None, loss_callback=None):
+    def residuals(self, refined_params, full_params, refine_mask, s_array, y_obs, weights=None, loss_callback=None, abort_event=None):
         """
         Calculate residuals for least_squares
         refined_params: List of parameters being refined
@@ -16,7 +20,10 @@ class CarbonXSFit:
         y_obs: Observed intensity
         weights: Optional weights (1/sigma)
         loss_callback: Optional callback function(cost)
+        abort_event: Optional threading.Event for cooperative cancellation
         """
+        if abort_event is not None and abort_event.is_set():
+            raise FitAbortedError("Fit aborted by user.")
         # Update full_params with refined_params
         current_params = full_params.copy()
         current_params[refine_mask] = refined_params
@@ -89,7 +96,7 @@ class CarbonXSFit:
         
         return lower, upper
 
-    def fit(self, initial_params, refine_flags, x_data, y_data, weights="poisson", max_nfev=None, loss_callback=None, ftol=1e-8, xtol=1e-8):
+    def fit(self, initial_params, refine_flags, x_data, y_data, weights="poisson", max_nfev=None, loss_callback=None, ftol=1e-8, xtol=1e-8, abort_event=None):
         """
         Perform the least squares fit.
         initial_params: Initial guess for all 18 parameters
@@ -138,7 +145,7 @@ class CarbonXSFit:
             self.residuals, 
             x0, 
             bounds=(refined_lower, refined_upper),
-            args=(initial_params, refine_mask, s_array, y_data, resolved_weights, loss_callback),
+            args=(initial_params, refine_mask, s_array, y_data, resolved_weights, loss_callback, abort_event),
             x_scale='jac',
             ftol=ftol,
             xtol=xtol,
