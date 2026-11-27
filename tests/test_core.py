@@ -139,3 +139,18 @@ def test_gmod_zero_q_pr1_and_strain_underflow(model):
     assert np.isclose(g_sm0[0], 1.0 / m)
     assert np.isclose(g_sm1[0], 1.0 / m)
     assert np.isclose(g_underflow[0], 1.0 / m)
+
+
+def test_gmod_smooth_near_singularity(model):
+    """Test gmod has no catastrophic cancellation or jump near q -> 1."""
+    m = 50.0
+    sm = 5.0
+    g0 = model.gmod(0, 0, np.array([0.0]), m=m, sm=sm, del_strain=0.02, pr=0.0, pt=1.0)[0]
+    l_vals = np.array([1e-8, 1e-7, 4e-7, 1e-6, 1e-5, 1e-4])
+    g_vals = model.gmod(0, 0, l_vals, m=m, sm=sm, del_strain=0.02, pr=0.0, pt=1.0)
+
+    assert np.all(np.isfinite(g_vals))
+    # Near l = 0, G(l) deviates from G(0) by O((m * pi * l)^2) ~ 1e-9 at l=4e-7
+    assert abs(g_vals[2] - g0) < 1e-6, f"Cancellation error at l=4e-7: {g_vals[2]} vs {g0}"
+    # Smooth monotonic decrease from l=0 for small l on (0,0) rod
+    assert np.all(np.diff(np.concatenate([[g0], g_vals])) <= 1e-12)

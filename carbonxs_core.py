@@ -90,20 +90,38 @@ class CarbonXSModel:
             
         q = ehk * el
         
-        # Modulation function: handle singularities q == 1 and q == 0
-        mask_singularity = (np.abs(q.real - 1.0) < 1e-6) & (np.abs(q.imag) < 1e-6)
+        # Modulation function: handle singularities q == 1 and q == 0, plus q -> 1 Taylor branch
+        scale_m = max(abs(m), abs(sm), 1.0)
+        dist_one = np.abs(1.0 - q)
+        mask_exact = dist_one < 1e-12
+        mask_near = (~mask_exact) & (dist_one < 1e-3) & (dist_one * scale_m < 1e-2)
         mask_zero = np.abs(q) < 1e-15
 
         gg = np.zeros_like(q.real)
 
-        if np.any(mask_singularity):
-            gg[mask_singularity] = (m**2 + sm**2) / m
+        if np.any(mask_exact):
+            gg[mask_exact] = (m**2 + sm**2) / m
+
+        if np.any(mask_near):
+            delta = 1.0 - q[mask_near]
+            e1 = -m
+            e2 = -0.5 * m + 0.5 * sm**2
+            e3 = -(1.0 / 3.0) * m + 0.5 * sm**2
+            e4 = -0.25 * m + (11.0 / 24.0) * sm**2
+            d2 = e2 + 0.5 * e1**2
+            d3 = e3 + e1 * e2 + (e1**3) / 6.0
+            d4 = e4 + e1 * e3 + 0.5 * e2**2 + 0.5 * (e1**2) * e2 + (e1**4) / 24.0
+            gg[mask_near] = (
+                (m**2 + sm**2) / m
+                + (2.0 / m) * (d3 - d2) * delta
+                + (2.0 / m) * (d4 - d3) * (delta**2)
+            ).real
 
         if np.any(mask_zero):
             gg[mask_zero] = 1.0
 
         # Handle normal case
-        mask_normal = (~mask_singularity) & (~mask_zero)
+        mask_normal = (~mask_exact) & (~mask_near) & (~mask_zero)
         if np.any(mask_normal):
             q_norm = q[mask_normal]
             lq = np.log(q_norm)
