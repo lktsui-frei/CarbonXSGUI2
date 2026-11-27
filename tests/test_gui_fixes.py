@@ -355,3 +355,33 @@ def test_subplots_do_not_overlap(main_window):
         if tick.get_text():
             tb = tick.get_window_extent(renderer)
             assert tb.x0 >= left_bbox.x1, f"Loss tick '{tick.get_text()}' (x0={tb.x0:.1f}) overlaps left plot (x1={left_bbox.x1:.1f})"
+
+
+def test_export_fit_results_full_and_mdi(main_window, tmp_path, monkeypatch):
+    """export_fit_results uses Windows-compatible (*.*) filter and exports Full Export or MDI cleanly."""
+    main_window.x_data = [20.0, 21.0]
+    main_window.y_data = [100.0, 110.0]
+    main_window.x_fit_data = [20.0, 21.0]
+    main_window.y_fit_data = [99.0, 109.0]
+    main_window.write_results_to_disk({"mode": "calculate", "x": [20.0, 21.0], "y_calc": [99.0, 109.0]})
+
+    captured_filters = []
+
+    def fake_get_save_full(_parent, _title, _dir, filter_str):
+        captured_filters.append(filter_str)
+        return str(tmp_path / "my_fit"), "Full Export (*.*)"
+
+    monkeypatch.setattr(QtGui.QFileDialog, "getSaveFileName", fake_get_save_full)
+    main_window.export_fit_results()
+
+    assert captured_filters[0] == "Full Export (*.*);;Jade MDI Format (*.mdi)"
+    assert (tmp_path / "my_fit_carbon_out.txt").exists()
+    assert (tmp_path / "my_fit_carbon_dat.txt").exists()
+    assert (tmp_path / "my_fit_carbon.inp").exists()
+
+    def fake_get_save_mdi(_parent, _title, _dir, filter_str):
+        return str(tmp_path / "my_fit_mdi"), "Jade MDI Format (*.mdi)"
+
+    monkeypatch.setattr(QtGui.QFileDialog, "getSaveFileName", fake_get_save_mdi)
+    main_window.export_fit_results()
+    assert (tmp_path / "my_fit_mdi.mdi").exists()

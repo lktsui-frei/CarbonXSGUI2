@@ -2384,30 +2384,26 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def export_fit_results(self):
         """
-        Copies the carbon.out, carbon.dat, and carbon.inp files currently in the carbonxs
-        directory to a destination of your choice.
-        :return:
+        Exports the carbon.out, carbon.dat, and carbon.inp files from the most recent run,
+        or exports the calculated pattern in Jade MDI format.
         """
 
-        if not len(self.x_data):
-            reply = QtGui.QMessageBox.warning(self, 'Export Data',
-                    "No data currently loaded.",
-                                              QtGui.QMessageBox.Close)
-
+        if not len(self.x_data) and not len(self.x_fit_data):
+            QtGui.QMessageBox.warning(self, 'Export Data', "No data currently loaded.", QtGui.QMessageBox.Close)
             return
 
-        if self.default_export_dir:
-
-             fname, _ = QtGui.QFileDialog.getSaveFileName(self, 'Select Base Name For Results',self.default_export_dir,
-                                                     "Full Export (*);; Jade MDI Format (*.mdi)")
-        else:
-             fname, _ = QtGui.QFileDialog.getSaveFileName(self, 'Select Base Name For Results',user_data_directory,
-                                                     "Full Export (*);; Jade MDI Format (*.mdi)")
-
+        start_dir = self.default_export_dir if self.default_export_dir else user_data_directory
+        fname, selected_filter = QtGui.QFileDialog.getSaveFileName(
+            self,
+            'Select Base Name For Results',
+            start_dir,
+            "Full Export (*.*);;Jade MDI Format (*.mdi)",
+        )
 
         if fname:
-
-            if fname.endswith('.mdi'):
+            if "Jade MDI" in selected_filter or fname.lower().endswith('.mdi'):
+                if not fname.lower().endswith('.mdi'):
+                    fname = fname + '.mdi'
                 print("Exporting fit results to Jade MDI Format")
 
                 directory, _ = os.path.split(fname)
@@ -2418,35 +2414,39 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             else:
                 out_dir = self.get_runtime_output_dir()
                 out_files = os.listdir(out_dir) if os.path.exists(out_dir) else []
-                for data_file, export_suffix in [('carbon.out', '_carbon_out.txt'), ('carbon.dat', '_carbon_dat.txt'), ('carbon.inp','_carbon.inp')]:
+                export_pairs = [('carbon.out', '_carbon_out.txt'), ('carbon.dat', '_carbon_dat.txt'), ('carbon.inp', '_carbon.inp')]
+                if not any(data_file in out_files for data_file, _ in export_pairs):
+                    QtGui.QMessageBox.warning(
+                        self,
+                        'Export Data',
+                        "No recent calculation or fit results found to export.",
+                        QtGui.QMessageBox.Close,
+                    )
+                    return
 
-                    # Checks if the files exist in the runtime output directory
+                for data_file, export_suffix in export_pairs:
                     if data_file in out_files:
-
                         destination = fname + export_suffix
                         directory, filename = os.path.split(destination)
 
-                        # Checks if the destination files already exists
                         if os.path.exists(destination):
-
-                            # Prompts user to overwrite if it does
-                            reply = QtGui.QMessageBox.question(self, 'Fit Completed',
-                                                               "%s exists. Overwrite?"%filename, QtGui.QMessageBox.Yes |
-                                                               QtGui.QMessageBox.No, QtGui.QMessageBox.No)
+                            reply = QtGui.QMessageBox.question(
+                                self,
+                                'Export Results',
+                                "%s exists. Overwrite?" % filename,
+                                QtGui.QMessageBox.Yes | QtGui.QMessageBox.No,
+                                QtGui.QMessageBox.No,
+                            )
                             if reply == QtGui.QMessageBox.Yes:
-
                                 self.default_export_dir = directory
-                                shutil.copy(os.path.join(out_dir, data_file), fname + export_suffix)
+                                shutil.copy(os.path.join(out_dir, data_file), destination)
                                 print("Copied %s file to %s. (Overwrote old file)" % (data_file, destination))
                             else:
                                 print("%s already exists. Did not overwrite." % destination)
-
                         else:
-
-                            self.default_export_dir =directory
-
+                            self.default_export_dir = directory
                             shutil.copy(os.path.join(out_dir, data_file), destination)
-                            print("Copied %s file to %s" %(data_file, destination))
+                            print("Copied %s file to %s" % (data_file, destination))
 
 
 
