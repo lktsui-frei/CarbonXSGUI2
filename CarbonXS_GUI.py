@@ -844,12 +844,18 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.show_previous.setText("Show Previous Fit")
         self.show_previous.setToolTip("Shows the Previous Iteration's Fit Result")
 
+        self.log_y_axis = QtGui.QCheckBox(self)
+        self.log_y_axis.setText("Log Y-Axis")
+        self.log_y_axis.setToolTip("Toggle between logarithmic and linear Y-axis scale.")
+        self.log_y_axis.setChecked(True)
+
         self.plot_buttons_layout.addWidget(self.plot_pattern_button)
         self.plot_buttons_layout.addWidget(self.plot_difference_button)
 
         self.plot_buttons_layout.addWidget(self.lock_y_axis)
         self.plot_buttons_layout.addWidget(self.lock_x_axis)
         self.plot_buttons_layout.addWidget(self.show_previous)
+        self.plot_buttons_layout.addWidget(self.log_y_axis)
 
 
 
@@ -905,6 +911,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         # Graph buttons
         self.plot_pattern_button.clicked.connect(self.plot_loaded_data)
         self.plot_difference_button.clicked.connect(self.plot_difference)
+        self.log_y_axis.toggled.connect(lambda _checked: self.plot_loaded_data())
 
         # Help Menu
         self.menu_tutorial.triggered.connect(self.open_documentation)
@@ -1321,7 +1328,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         else:
             self.ax.set_title("Fit Pattern")
 
-        self.ax.set_yscale('log')
+        use_log_y = self.log_y_axis.isChecked() if hasattr(self, 'log_y_axis') else True
+        self.ax.set_yscale('log' if use_log_y else 'linear')
         self.ax.legend(fontsize=14, frameon=True)
         self.ax.grid(True)
 
@@ -1329,7 +1337,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         # Otherwise, let matplotlib auto-scale to fit the data
         if self.lock_y_axis.isChecked() and hasattr(self, 'y_limit') and self.y_limit is not None:
             y_min, y_max = self.y_limit
-            if y_min > 0 and y_max > y_min:  # Valid for log scale
+            if (not use_log_y or y_min > 0) and y_max > y_min:
                 self.ax.set_ylim(self.y_limit)
             else:
                 print(f"Ignoring invalid y_limit: {self.y_limit}")

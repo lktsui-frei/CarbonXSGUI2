@@ -265,3 +265,20 @@ def test_data_io_closes_files_and_roundtrips(tmp_path):
     assert len(res_warnings) == 0, f"Unclosed file handles: {[str(w.message) for w in res_warnings]}"
     assert len(rx) == len(x) and len(ry) == len(y)
     assert list(tx) == [20.0, 21.0] and list(ty) == [100.0, 150.0]
+
+
+def test_log_linear_y_axis_toggle(main_window):
+    """log_y_axis checkbox should default to checked ('log') and toggle to 'linear'."""
+    main_window.wavelength.setValue(1.5418)
+    main_window.theta_min_value.setValue(20.0)
+    main_window.theta_max_value.setValue(30.0)
+    main_window.x_data = [20.0, 25.0, 30.0]
+    main_window.y_data = [100.0, 200.0, 150.0]
+
+    assert hasattr(main_window, "log_y_axis")
+    assert main_window.log_y_axis.isChecked()
+    main_window.plot_loaded_data()
+    assert main_window.ax.get_yscale() == "log"
+
+    main_window.log_y_axis.setChecked(False)
+    assert main_window.ax.get_yscale() == "linear"
