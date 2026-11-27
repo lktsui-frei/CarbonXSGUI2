@@ -9,9 +9,8 @@ def read_ras_file(filename):
 
     # Reads a data file from the .ras format
 
-    input_file = open(filename, 'r')
-
-    data_lines = input_file.readlines()
+    with open(filename, 'r') as input_file:
+        data_lines = input_file.readlines()
 
     x_data = []
     y_data = []
@@ -46,9 +45,8 @@ def read_ras_file(filename):
 
 def read_mdi_file(filename):
 
-    input_file = open(filename, 'r')
-
-    data_lines = list(input_file.readlines())
+    with open(filename, 'r') as input_file:
+        data_lines = list(input_file.readlines())
 
     metadata_line = data_lines[1].split()
 
@@ -73,52 +71,51 @@ def read_mdi_file(filename):
 
 def write_mdi_file(filename, x_data, y_data, wavelength = 1.54056):
 
-    output_file = open(filename, 'w')
+    with open(filename, 'w') as output_file:
+        today = datetime.datetime.now()
 
-    today = datetime.datetime.now()
+        date_string = today.strftime("%m-%d-%y @%H:%M")
 
-    date_string = today.strftime("%m-%d-%y @%H:%M")
+        header_string = date_string + " DIF CARBONXS EXPORT"
 
-    header_string = date_string + " DIF CARBONXS EXPORT"
+        starting_2theta = x_data[0]
+        delta_2theta = x_data[1]-x_data[0]
+        scanrate = 1.0
 
-    starting_2theta = x_data[0]
-    delta_2theta = x_data[1]-x_data[0]
-    scanrate = 1.0
+        # Dummy settings - Export a dummy diffraction
+        anode = "CU"
+        wavelength_str = "%6.5f"%wavelength
 
-    # Dummy settings - Export a dummy diffraction
-    anode = "CU"
-    wavelength_str = "%6.5f"%wavelength
-
-    ending_2theta = x_data[-1]
-    total_data_points = len(x_data)
+        ending_2theta = x_data[-1]
+        total_data_points = len(x_data)
 
 
-    output_file.write(header_string+"\n")
-    output_file.write("%3.1f %3.1f %3.1f %s %s %4.1f %d \n"%(starting_2theta,
-                                                          delta_2theta,
-                                                          scanrate,
-                                                          anode,
-                                                          wavelength_str,
-                                                          ending_2theta,
-                                                          total_data_points
-                                                          ))
+        output_file.write(header_string+"\n")
+        output_file.write("%3.1f %3.1f %3.1f %s %s %4.1f %d \n"%(starting_2theta,
+                                                              delta_2theta,
+                                                              scanrate,
+                                                              anode,
+                                                              wavelength_str,
+                                                              ending_2theta,
+                                                              total_data_points
+                                                              ))
 
-    counter = 0
-    data_line = ""
+        counter = 0
+        data_line = ""
 
-    # MDI Data format is eight columns of sequential data
-    for data_point in y_data:
+        # MDI Data format is eight columns of sequential data
+        for data_point in y_data:
 
-        data_line += "%8.1f "%data_point
-        counter += 1
+            data_line += "%8.1f "%data_point
+            counter += 1
 
-        if counter == 8:
-            output_file.write(data_line + '\n')
-            counter = 0
-            data_line = ""
+            if counter == 8:
+                output_file.write(data_line + '\n')
+                counter = 0
+                data_line = ""
 
-    # Write last output
-    output_file.write(data_line + '\n')
+        # Write last output
+        output_file.write(data_line + '\n')
 
 
 

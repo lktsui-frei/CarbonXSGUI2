@@ -207,3 +207,61 @@ def test_runtime_outputs_isolated_from_carbonxs(main_window, tmp_path):
     assert (last_run_dir / "carbon.out").exists()
     assert os.path.getmtime(os.path.join(carbonxs_dir, "carbon.dat")) == dat_mtime_before
     assert os.path.getmtime(os.path.join(carbonxs_dir, "carbon.inp")) == inp_mtime_before
+
+
+def test_prev_fit_ax_loss_undo_and_dead_code(main_window, monkeypatch):
+    """Verify prev_fit preservation, update_loss_plot after plot_difference, undo buttons, and dead code removal."""
+    monkeypatch.setattr(main_window, "write_results_to_disk", lambda _res: None)
+
+    # 1. Dead QProcess methods removed
+    assert not hasattr(main_window, "on_process_message")
+    assert not hasattr(main_window, "fitting_finished")
+
+    # 2. prev_x_fit / prev_y_fit populated on second finish
+    params = [p.value() for p in main_window.parameter_list]
+    main_window.x_data = [20.0, 21.0, 22.0]
+    main_window.y_data = [100.0, 120.0, 110.0]
+    res1 = {"mode": "calculate", "x": [20.0, 21.0, 22.0], "y_calc": [90.0, 110.0, 100.0], "params": params}
+    main_window.on_worker_finished(res1)
+    res2 = {"mode": "calculate", "x": [20.0, 21.0, 22.0], "y_calc": [95.0, 115.0, 105.0], "params": params}
+    main_window.on_worker_finished(res2)
+    assert main_window.prev_x_fit == [20.0, 21.0, 22.0]
+    assert main_window.prev_y_fit == [90.0, 110.0, 100.0]
+
+    # 3. update_loss_plot after plot_difference must not crash or draw onto detached axes
+    main_window.plot_difference()
+    main_window.loss_data = [1.0] * 9
+    main_window.update_loss_plot(0.5)  # 10th call triggers draw
+
+    # 4. Undo/redo button state respected on on_worker_finished when append_to_buffer=False
+    main_window.append_to_buffer = False
+    main_window.undo_buffer = [
+        CarbonXS_GUI.FittingParams(main_window.parameter_list, main_window.parameter_enable_list, main_window.fit_settings, main_window.diff_settings)
+    ]
+    main_window.undo_index = 0
+    main_window.on_worker_finished(res2)
+    assert not main_window.back_button.isEnabled()
+    assert not main_window.forward_button.isEnabled()
+
+
+def test_data_io_closes_files_and_roundtrips(tmp_path):
+    """data_io read/write functions close file handles cleanly without ResourceWarning."""
+    import numpy as np
+    import data_io
+
+    mdi_path = tmp_path / "test.mdi"
+    x = np.linspace(20.0, 22.0, 11)
+    y = np.linspace(100.0, 200.0, 11)
+    ras_path = tmp_path / "test.ras"
+    ras_path.write_text("RAS_INT_START\n20.0 100.0 1.0\n21.0 150.0 1.0\nRAS_INT_END\n")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        data_io.write_mdi_file(str(mdi_path), x, y)
+        rx, ry = data_io.read_mdi_file(str(mdi_path))
+        tx, ty = data_io.read_ras_file(str(ras_path))
+
+    res_warnings = [w for w in caught if issubclass(w.category, ResourceWarning)]
+    assert len(res_warnings) == 0, f"Unclosed file handles: {[str(w.message) for w in res_warnings]}"
+    assert len(rx) == len(x) and len(ry) == len(y)
+    assert list(tx) == [20.0, 21.0] and list(ty) == [100.0, 150.0]
