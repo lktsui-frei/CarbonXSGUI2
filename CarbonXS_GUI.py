@@ -420,9 +420,10 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
                          }
 
-        config_file = open(os.path.join(user_data_directory, 'config','config.json'), 'w')
-
-        ujson.dump(configuration, config_file, indent=4)
+        config_dir = os.path.join(user_data_directory, 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        with open(os.path.join(config_dir, 'config.json'), 'w') as config_file:
+            ujson.dump(configuration, config_file, indent=4)
 
 
     def first_time_app_setup(self):
@@ -2047,16 +2048,27 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 f.write("Success: %s\n" % result['success'])
                 f.write("Message: %s\n" % result['message'])
 
+    def _disconnect_worker_signals(self):
+        if not self.worker_thread:
+            return
+        for sig, slot in (
+            (self.worker_thread.finished_signal, self.on_worker_finished),
+            (self.worker_thread.error_signal, self.on_worker_error),
+        ):
+            try:
+                sig.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+        if getattr(self.worker_thread, 'mode', None) == 'fit':
+            try:
+                self.worker_thread.loss_signal.disconnect(self.update_loss_plot)
+            except (RuntimeError, TypeError):
+                pass
+
     def on_worker_finished(self, result):
         # Properly disconnect signals and schedule deletion before clearing reference
         if self.worker_thread:
-            try:
-                self.worker_thread.finished_signal.disconnect()
-                self.worker_thread.error_signal.disconnect()
-                self.worker_thread.loss_signal.disconnect()
-            except:
-                pass  # Signals may already be disconnected
-            
+            self._disconnect_worker_signals()
             # Schedule Qt cleanup at appropriate time
             self.worker_thread.deleteLater()
         
@@ -2117,13 +2129,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
     def on_worker_error(self, error_msg):
         # Properly disconnect signals and schedule deletion before clearing reference
         if self.worker_thread:
-            try:
-                self.worker_thread.finished_signal.disconnect()
-                self.worker_thread.error_signal.disconnect()
-                self.worker_thread.loss_signal.disconnect()
-            except:
-                pass  # Signals may already be disconnected
-            
+            self._disconnect_worker_signals()
             # Schedule Qt cleanup at appropriate time
             self.worker_thread.deleteLater()
         
@@ -2487,12 +2493,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         if hasattr(self, 'worker_thread') and self.worker_thread is not None and self.worker_thread.isRunning():
             print("Stopping worker thread...")
             # Disconnect signals before terminating
-            try:
-                self.worker_thread.finished_signal.disconnect()
-                self.worker_thread.error_signal.disconnect()
-                self.worker_thread.loss_signal.disconnect()
-            except:
-                pass  # Signals may already be disconnected
+            self._disconnect_worker_signals()
             
             self.worker_thread.terminate()
             self.worker_thread.wait()
