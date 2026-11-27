@@ -1,3 +1,4 @@
+import warnings
 import pytest
 import numpy as np
 from carbonxs_core import CarbonXSModel
@@ -120,3 +121,21 @@ def test_inten_zero_scale(model):
     s = 0.5
     val = model.inten(s, params)
     assert val == 0.0
+
+
+def test_gmod_zero_q_pr1_and_strain_underflow(model):
+    """Test gmod returns 1/m with no NaN or RuntimeWarning when q == 0."""
+    m = 10.0
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        # Pr = 1.0 on (1, 0) rod -> ehk = 0 -> q = 0
+        g_sm0 = model.gmod(1, 0, np.array([0.5]), m=m, sm=0.0, del_strain=0.01, pr=1.0, pt=0.0)
+        g_sm1 = model.gmod(1, 0, np.array([0.5]), m=m, sm=1.0, del_strain=0.01, pr=1.0, pt=0.0)
+        # Huge del_strain -> edel underflows to 0 -> q = 0
+        g_underflow = model.gmod(0, 0, np.array([1.0]), m=m, sm=1.0, del_strain=100.0, pr=0.0, pt=1.0)
+
+    runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert len(runtime_warnings) == 0, f"Unexpected RuntimeWarnings: {[str(w.message) for w in runtime_warnings]}"
+    assert np.isclose(g_sm0[0], 1.0 / m)
+    assert np.isclose(g_sm1[0], 1.0 / m)
+    assert np.isclose(g_underflow[0], 1.0 / m)

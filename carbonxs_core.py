@@ -90,19 +90,20 @@ class CarbonXSModel:
             
         q = ehk * el
         
-        # Modulation function
-        # Check for singularities (Real(Q) == 1.0)
-        # Using a small epsilon for float comparison
+        # Modulation function: handle singularities q == 1 and q == 0
         mask_singularity = (np.abs(q.real - 1.0) < 1e-6) & (np.abs(q.imag) < 1e-6)
-        
+        mask_zero = np.abs(q) < 1e-15
+
         gg = np.zeros_like(q.real)
-        
-        # Handle singularity
+
         if np.any(mask_singularity):
             gg[mask_singularity] = (m**2 + sm**2) / m
-            
+
+        if np.any(mask_zero):
+            gg[mask_zero] = 1.0
+
         # Handle normal case
-        mask_normal = ~mask_singularity
+        mask_normal = (~mask_singularity) & (~mask_zero)
         if np.any(mask_normal):
             q_norm = q[mask_normal]
             lq = np.log(q_norm)
