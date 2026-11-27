@@ -49,7 +49,8 @@ class CarbonXSFit:
         upper = np.full(18, np.inf)
         
         # Parameter indices (0-based):
-        # 0: Scale
+        # 0: Scale >= 0
+        lower[0] = 0.0
         # 1-6: Background parameters
         # 7: A (Cell constant) > 0
         lower[7] = 1.0  # Reasonable lower bound for A
@@ -63,7 +64,7 @@ class CarbonXSFit:
         # 10: M (Number of layers) > 0
         lower[10] = 0.1
         
-        # 11: SM (Width of M distribution) > 0
+        # 11: SM (Width of M distribution) >= 0
         lower[11] = 0.0
         
         # 12: Dab (In plane strain) >= 0
@@ -72,14 +73,13 @@ class CarbonXSFit:
         # 13: Del (Interplanar strain) >= 0
         lower[13] = 0.0
         
-        # 14: Pr (Probability of Random Stacking) 0 <= Pr < 1
-        # Constrain to slightly less than 1 to avoid singularity
+        # 14: Pr (Probability of Random Stacking) 0 <= Pr <= 1
         lower[14] = 0.0
-        upper[14] = 0.99999
+        upper[14] = 1.0
         
-        # 15: Pt (Prob 3R) or g (Fraction low strain) 0 <= Pt < 1
+        # 15: Pt (Prob 3R) or g (Fraction low strain) 0 <= Pt <= 1
         lower[15] = 0.0
-        upper[15] = 0.99999
+        upper[15] = 1.0
         
         # 16: B (Temp factor) >= 0
         lower[16] = 0.0
@@ -89,22 +89,32 @@ class CarbonXSFit:
         
         return lower, upper
 
-    def fit(self, initial_params, refine_flags, x_data, y_data, weights=None, max_nfev=None, loss_callback=None):
+    def fit(self, initial_params, refine_flags, x_data, y_data, weights="poisson", max_nfev=None, loss_callback=None, ftol=1e-8, xtol=1e-8):
         """
         Perform the least squares fit.
         initial_params: Initial guess for all 18 parameters
         refine_flags: Boolean list/array of length 18, True if parameter should be refined
         x_data: 2theta values (degrees)
         y_data: Observed intensity
-        weights: Optional weights (1/sigma)
+        weights: 'poisson' (default, 1/sqrt(max(y, 1.0))), None (unweighted), or array of weights
+        max_nfev: Maximum number of function evaluations
         loss_callback: Optional callback function(cost)
+        ftol, xtol: Convergence tolerances passed to scipy.optimize.least_squares
         """
         # Convert x_data (2theta) to s_array
         theta_rad = np.radians(x_data / 2.0)
         s_array = 2 * np.sin(theta_rad) / self.model.LAM
         
-        initial_params = np.array(initial_params)
+        initial_params = np.asarray(initial_params, dtype=np.float64)
+        y_data = np.asarray(y_data, dtype=np.float64)
         refine_mask = np.array(refine_flags, dtype=bool)
+
+        if isinstance(weights, str) and weights.lower() == "poisson":
+            resolved_weights = 1.0 / np.sqrt(np.maximum(y_data, 1.0))
+        elif weights is None:
+            resolved_weights = None
+        else:
+            resolved_weights = np.asarray(weights, dtype=np.float64)
         
         # Extract parameters to be refined
         x0 = initial_params[refine_mask]
@@ -128,9 +138,12 @@ class CarbonXSFit:
             self.residuals, 
             x0, 
             bounds=(refined_lower, refined_upper),
-            args=(initial_params, refine_mask, s_array, y_data, weights, loss_callback),
+            args=(initial_params, refine_mask, s_array, y_data, resolved_weights, loss_callback),
+            x_scale='jac',
+            ftol=ftol,
+            xtol=xtol,
             max_nfev=max_nfev,
-            verbose=0  # Set to 0 to reduce console output
+            verbose=0
         )
         
         # Construct final parameters

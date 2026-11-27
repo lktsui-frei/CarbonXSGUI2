@@ -186,3 +186,39 @@ def test_fit_with_example_data():
         assert params_changed, "At least one parameter should change during fitting"
     
     print(f"  ✓ Test passed - fit completed successfully!")
+
+
+def test_default_poisson_weights_bounds_and_tolerances(fitter, model):
+    """Test default Poisson weighting, explicit unweighted option, bounds, and ftol/xtol."""
+    lower, upper = fitter._get_parameter_bounds()
+    assert lower[0] == 0.0, f"Scale lower bound should be 0.0, got {lower[0]}"
+    assert upper[14] == 1.0, f"Pr upper bound should be 1.0, got {upper[14]}"
+    assert upper[15] == 1.0, f"Pt upper bound should be 1.0, got {upper[15]}"
+
+    params = np.zeros(18)
+    params[0] = 100.0
+    params[7] = 2.46
+    params[8] = 3.35
+    params[9] = 50.0
+    params[10] = 10.0
+    params[11] = 1.0
+
+    lam = 1.5418
+    x_obs = np.linspace(20.0, 80.0, 61)
+    s_array = 2.0 * np.sin(np.radians(x_obs / 2.0)) / lam
+    model.set_parameters(params, n_layers_model=1)
+    y_true = model.all_inten(s_array, model.params)
+    # Add constant offset +100 so residual at optimum isn't zero and weighting affects cost
+    y_obs = y_true + 100.0
+
+    refine_flags = [False] * 18
+    refine_flags[0] = True
+    init = params.copy()
+    init[0] = 90.0
+
+    final_poisson, res_poisson = fitter.fit(init, refine_flags, x_obs, y_obs, ftol=1e-6, xtol=1e-6)
+    final_unweighted, res_unweighted = fitter.fit(init, refine_flags, x_obs, y_obs, weights=None, ftol=1e-6, xtol=1e-6)
+
+    assert res_poisson.success and res_unweighted.success
+    # Poisson weighting and unweighted weighting should produce different optimal Scale when residual != 0
+    assert not np.isclose(final_poisson[0], final_unweighted[0], rtol=1e-4)
