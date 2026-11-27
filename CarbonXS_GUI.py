@@ -48,7 +48,7 @@ if hasattr(sys, 'frozen') and sys.platform == 'darwin':
     print("Detected a frozen application and extracting the appropriate file directory format")
     base_directory = os.path.join(os.path.dirname(sys.executable))
 else:
-    base_directory = '.'
+    base_directory = os.path.dirname(os.path.abspath(__file__))
 
 
 user_data_directory = appdirs.user_data_dir("CarbonXS_GUI")
@@ -91,41 +91,51 @@ class WorkerThread(QtCore.QThread):
             model.BW = self.settings['beam_width']
             model.n_layers_model = int(self.settings['number_layers']) + 1 
             
+            theta_min = self.settings['theta_min']
+            theta_max = self.settings['theta_max']
+            nskip = max(1, int(self.settings.get('nskip', 1)))
+
             if self.mode == 'calculate':
                 model.set_parameters(self.params, model.n_layers_model)
-                
-                # Generate S array based on theta range
-                theta_min = self.settings['theta_min']
-                theta_max = self.settings['theta_max']
-                
+
                 if self.data is not None and len(self.data[0]) > 0:
-                    x_array = self.data[0]
+                    x_raw = np.asarray(self.data[0], dtype=np.float64)
+                    mask = (x_raw >= theta_min) & (x_raw <= theta_max)
+                    x_array = x_raw[mask][::nskip]
+                    if len(x_array) == 0:
+                        raise ValueError("No data points within theta_min..theta_max range.")
                 else:
-                    x_array = np.arange(theta_min, theta_max + 0.01, 0.1)
-                    
+                    x_array = np.arange(theta_min, theta_max + 0.01, 0.05)
+
                 theta_rad = np.radians(x_array / 2.0)
                 s_array = 2 * np.sin(theta_rad) / model.LAM
-                
+
                 # Use model.params (rescaled)
                 y_calc = model.all_inten(s_array, model.params)
-                
+
                 result = {
                     'mode': 'calculate',
                     'x': x_array,
                     'y_calc': y_calc,
-                    'params': self.params # Original params
+                    'params': self.params  # Original params
                 }
                 self.finished_signal.emit(result)
-                
+
             elif self.mode == 'fit':
                 fitter = CarbonXSFit(model)
-                x_obs = self.data[0]
-                y_obs = self.data[1]
-                
+                x_raw = np.asarray(self.data[0], dtype=np.float64)
+                y_raw = np.asarray(self.data[1], dtype=np.float64)
+                mask = (x_raw >= theta_min) & (x_raw <= theta_max)
+                x_obs = x_raw[mask][::nskip]
+                y_obs = y_raw[mask][::nskip]
+                if len(x_obs) == 0:
+                    raise ValueError("No data points within theta_min..theta_max range.")
+
                 # Get max function evaluations from iterations setting
-                max_nfev = int(self.settings.get('iterations', 100)) * 100  # Scale by 100 for reasonable limit
-                print(f"DEBUG: Starting fit with max_nfev={max_nfev}")
-                
+                max_nfev = int(self.settings.get('iterations', 100)) * 100
+                epsilon = float(self.settings.get('epsilon', 1e-8))
+                print(f"DEBUG: Starting fit with max_nfev={max_nfev}, n_pts={len(x_obs)}, tol={epsilon}")
+
                 # Define loss callback
                 def loss_callback(cost):
                     self.loss_signal.emit(cost)
@@ -137,22 +147,29 @@ class WorkerThread(QtCore.QThread):
                     y_obs,
                     max_nfev=max_nfev,
                     loss_callback=loss_callback,
+                    ftol=epsilon,
+                    xtol=epsilon,
                     abort_event=self.abort_event,
                 )
-                
+
                 # Recalculate pattern with final params
                 model.set_parameters(final_params, model.n_layers_model)
                 theta_rad = np.radians(x_obs / 2.0)
                 s_array = 2 * np.sin(theta_rad) / model.LAM
                 y_calc = model.all_inten(s_array, model.params)
-                
+
+                stats = fitter.compute_fit_statistics(final_params, self.refine_flags, res)
+
                 result = {
                     'mode': 'fit',
                     'x': x_obs,
+                    'y_obs': y_obs,
                     'y_calc': y_calc,
+                    'initial_params': list(self.params),
                     'final_params': final_params,
                     'success': res.success if res is not None else True,
                     'message': res.message if res is not None else 'No parameters selected for refinement',
+                    'stats': stats,
                 }
                 self.finished_signal.emit(result)
                 
@@ -491,6 +508,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                          os.path.join(user_data_directory, 'examples'))
 
 
+    def get_runtime_output_dir(self):
+        return os.path.join(user_data_directory, 'last_run')
+
     def data_init(self):
         """"
         On startup, read the last used Carbon.INP file
@@ -499,14 +519,18 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         if not os.path.exists(user_data_directory):
             self.first_time_app_setup()
 
-
-        # Attempts to load a Carbon.INP file if it exists
+        # Prefer last runtime carbon.inp, fall back read-only to carbonxs/carbon.inp
+        last_inp = os.path.join(self.get_runtime_output_dir(), 'carbon.inp')
+        default_inp = os.path.join(base_directory, 'carbonxs', 'carbon.inp')
         try:
-            self.read_carboninp(os.path.join(base_directory, 'carbonxs', 'carbon.inp'))
-
-            print("Loaded most recently used parameters successfully from 'carbonxs' directory.")
+            if os.path.exists(last_inp):
+                self.read_carboninp(last_inp)
+                print("Loaded most recently used parameters successfully from user data directory.")
+            else:
+                self.read_carboninp(default_inp)
+                print("Loaded default parameters successfully from 'carbonxs' directory.")
         except IOError:
-            print("No previous parameters found in 'carbonxs' directory.")
+            print("No previous parameters found.")
 
         # Clears any SCAN.DAT file already in carbonxs directory
         if 'SCAN.DAT' in os.listdir(os.path.join(base_directory, 'carbonxs')):
@@ -968,7 +992,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             return
 
 
-        pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
+        pattern_filename = os.path.join(self.get_runtime_output_dir(), 'carbon.dat')
+        if not os.path.exists(pattern_filename):
+            pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
 
         self.x_fit_data = []
         self.y_fit_data = []
@@ -1182,7 +1208,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         :return:
         """
         if from_file:
-            pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
+            pattern_filename = os.path.join(self.get_runtime_output_dir(), 'carbon.dat')
+            if not os.path.exists(pattern_filename):
+                pattern_filename = os.path.join(base_directory, 'carbonxs', 'carbon.dat')
 
             self.prev_x_fit = self.x_fit_data
             self.prev_y_fit = self.y_fit_data
@@ -2038,19 +2066,20 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         return settings
 
     def write_results_to_disk(self, result):
-        # Ensure carbonxs directory exists
-        out_dir = os.path.join(base_directory, 'carbonxs')
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
+        # Ensure runtime output directory exists (never overwrite carbonxs/ reference files)
+        out_dir = self.get_runtime_output_dir()
+        os.makedirs(out_dir, exist_ok=True)
             
         # Write carbon.dat
         # Format: 2theta, obs, calc
-        # If calculate mode, obs might be missing or zeros
         x = result['x']
         y_calc = result['y_calc']
-        y_obs = np.zeros_like(x)
-        if len(self.y_data) == len(x):
+        if 'y_obs' in result and len(result['y_obs']) == len(x):
+            y_obs = result['y_obs']
+        elif len(self.y_data) == len(x):
             y_obs = self.y_data
+        else:
+            y_obs = np.zeros_like(x)
             
         with open(os.path.join(out_dir, 'carbon.dat'), 'w') as f:
             for i in range(len(x)):
@@ -2382,10 +2411,12 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                 self.default_export_dir = directory
 
             else:
+                out_dir = self.get_runtime_output_dir()
+                out_files = os.listdir(out_dir) if os.path.exists(out_dir) else []
                 for data_file, export_suffix in [('carbon.out', '_carbon_out.txt'), ('carbon.dat', '_carbon_dat.txt'), ('carbon.inp','_carbon.inp')]:
 
-                    # Checks if the files exist in the directory
-                    if data_file in os.listdir('carbonxs'):
+                    # Checks if the files exist in the runtime output directory
+                    if data_file in out_files:
 
                         destination = fname + export_suffix
                         directory, filename = os.path.split(destination)
@@ -2400,7 +2431,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
                             if reply == QtGui.QMessageBox.Yes:
 
                                 self.default_export_dir = directory
-                                shutil.copy(os.path.join(base_directory, 'carbonxs', data_file), fname + export_suffix)
+                                shutil.copy(os.path.join(out_dir, data_file), fname + export_suffix)
                                 print("Copied %s file to %s. (Overwrote old file)" % (data_file, destination))
                             else:
                                 print("%s already exists. Did not overwrite." % destination)
@@ -2409,7 +2440,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
                             self.default_export_dir =directory
 
-                            shutil.copy(os.path.join(base_directory, 'carbonxs', data_file), destination)
+                            shutil.copy(os.path.join(out_dir, data_file), destination)
                             print("Copied %s file to %s" %(data_file, destination))
 
 

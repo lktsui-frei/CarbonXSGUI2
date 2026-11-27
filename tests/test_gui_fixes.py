@@ -141,3 +141,69 @@ def test_worker_cooperative_abort_and_empty_refine_flags(main_window):
     wt_abort.aborted_signal.connect(lambda: aborted.append(True))
     wt_abort.run()
     assert aborted == [True]
+
+
+def test_worker_applies_theta_nskip_and_step05(main_window):
+    """WorkerThread filters by theta_min..theta_max and nskip, and uses 0.05 step without data."""
+    import numpy as np
+    params = [p.value() for p in main_window.parameter_list]
+    params[0] = 100.0
+    params[7] = 2.46
+    params[8] = 3.35
+    params[9] = 50.0
+    params[10] = 10.0
+    params[11] = 1.0
+    settings = {
+        "theta_min": 20.0,
+        "theta_max": 40.0,
+        "iterations": 5,
+        "epsilon": 0.001,
+        "nskip": 2,
+        "number_layers": 0,
+        "tci_pts": 10,
+        "integration_width": 3,
+        "wavelength": 1.5418,
+        "sample_depth": 2.0,
+        "sample_width": 20.0,
+        "goniometer_radius": 200.0,
+        "beam_width": 1.0,
+        "sample_density": 1.0,
+    }
+
+    # Calculate without data -> step 0.05 from 20.0 to 40.0 -> 401 points
+    wt_calc = CarbonXS_GUI.WorkerThread("calculate", params, settings, data=None)
+    calc_res = []
+    wt_calc.finished_signal.connect(calc_res.append)
+    wt_calc.run()
+    assert len(calc_res) == 1
+    assert np.isclose(calc_res[0]["x"][1] - calc_res[0]["x"][0], 0.05)
+
+    # Fit with full 10..60 data -> filtered to 20..40 and strided by nskip=2
+    x_full = np.arange(10.0, 60.05, 0.5)  # 101 pts; 20..40 has 41 pts; nskip=2 -> 21 pts
+    y_full = np.ones_like(x_full) * 100.0
+    wt_fit = CarbonXS_GUI.WorkerThread("fit", params, settings, data=(x_full, y_full), refine_flags=[False] * 18)
+    fit_res = []
+    wt_fit.finished_signal.connect(fit_res.append)
+    wt_fit.run()
+    assert len(fit_res) == 1
+    assert len(fit_res[0]["x"]) == 21
+    assert fit_res[0]["x"][0] >= 20.0 and fit_res[0]["x"][-1] <= 40.0
+
+
+def test_runtime_outputs_isolated_from_carbonxs(main_window, tmp_path):
+    """write_results_to_disk writes to user_data_directory/last_run without touching carbonxs/."""
+    carbonxs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "carbonxs")
+    dat_mtime_before = os.path.getmtime(os.path.join(carbonxs_dir, "carbon.dat"))
+    inp_mtime_before = os.path.getmtime(os.path.join(carbonxs_dir, "carbon.inp"))
+
+    main_window.x_data = [20.0, 20.1]
+    main_window.y_data = [100.0, 110.0]
+    result = {"mode": "calculate", "x": [20.0, 20.1], "y_calc": [99.0, 109.0]}
+    main_window.write_results_to_disk(result)
+
+    last_run_dir = tmp_path / "last_run"
+    assert (last_run_dir / "carbon.dat").exists()
+    assert (last_run_dir / "carbon.inp").exists()
+    assert (last_run_dir / "carbon.out").exists()
+    assert os.path.getmtime(os.path.join(carbonxs_dir, "carbon.dat")) == dat_mtime_before
+    assert os.path.getmtime(os.path.join(carbonxs_dir, "carbon.inp")) == inp_mtime_before
