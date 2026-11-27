@@ -1,5 +1,7 @@
 # CarbonXS GUI
 
+[![CI](https://github.com/lktsui-frei/CarbonXSGUI2/actions/workflows/ci.yml/badge.svg)](https://github.com/lktsui-frei/CarbonXSGUI2/actions/workflows/ci.yml)
+
 A Python-based GUI application for analyzing carbon X-ray diffraction patterns using least squares fitting.
 
 ## Overview

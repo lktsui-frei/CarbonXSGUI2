@@ -40,8 +40,8 @@ def test_appdirs_import():
 
 
 @pytest.mark.skipif(
-    os.getenv('CI') is not None,
-    reason="Qt tests skipped in CI environment (no display/OpenGL libraries)"
+    os.getenv('CI') is not None and not os.getenv('QT_QPA_PLATFORM'),
+    reason="Qt tests skipped in headless CI without QT_QPA_PLATFORM configured"
 )
 def test_pyside6_basic_import():
     """Test that PySide6 basic modules can be imported."""
@@ -52,8 +52,8 @@ def test_pyside6_basic_import():
 
 
 @pytest.mark.skipif(
-    os.getenv('CI') is not None,
-    reason="Qt tests skipped in CI environment (no display/OpenGL libraries)"
+    os.getenv('CI') is not None and not os.getenv('QT_QPA_PLATFORM'),
+    reason="Qt tests skipped in headless CI without QT_QPA_PLATFORM configured"
 )
 def test_qt_compat_import():
     """Test that qt_compat module works correctly."""
