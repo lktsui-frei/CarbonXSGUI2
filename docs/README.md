@@ -27,6 +27,6 @@ CarbonXS GUI brings the structural refinement model originally developed in Fort
 ## Credits
 
 - **Original Fortran CarbonXS Model:** Hang Shi, J. N. Reimers, and J. R. Dahn (Simon Fraser University).
-- **CarbonXS GUI & Python Port:** Lok-kun Tsui (`lktsui@unm.edu`).
+- **CarbonXS GUI & Python Port:** Lok-kun Tsui (`lok-kun.tsui.t6r@research.f-rei.go.jp`).
 
 Please report bugs or feature requests on the [GitHub Issues page](https://github.com/lktsui-frei/CarbonXSGUI2/issues).
