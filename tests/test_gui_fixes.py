@@ -282,3 +282,49 @@ def test_log_linear_y_axis_toggle(main_window):
 
     main_window.log_y_axis.setChecked(False)
     assert main_window.ax.get_yscale() == "linear"
+
+
+def test_fortran_carbon_out_and_fit_results_dialog(main_window, tmp_path):
+    """write_results_to_disk writes Fortran-style stats to carbon.out and FitResultsDialog renders them."""
+    import numpy as np
+    initial_params = [1.0] * 18
+    final_params = [2.0] * 18
+    final_params[8] = 3.36
+    final_params[10] = 20.0
+    siga = np.zeros(18)
+    siga[0] = 0.05
+    siga[8] = 0.01
+    siga[10] = 0.5
+    corr = np.eye(18) * 100.0
+    stats = {
+        "reduced_chi2": 1.2345,
+        "siga": siga,
+        "corr": corr,
+        "lc": 67.2,
+        "slc": 1.69,
+    }
+    result = {
+        "mode": "fit",
+        "x": [20.0, 21.0],
+        "y_obs": [100.0, 110.0],
+        "y_calc": [99.5, 110.2],
+        "initial_params": initial_params,
+        "final_params": final_params,
+        "success": True,
+        "message": "Converged",
+        "stats": stats,
+    }
+    main_window.write_results_to_disk(result)
+    out_text = (tmp_path / "last_run" / "carbon.out").read_text()
+    assert "Reduced Chi^2" in out_text
+    assert "Final Parameters" in out_text
+    assert "Lc =" in out_text
+    assert "Correlation Matrix" in out_text
+
+    assert hasattr(CarbonXS_GUI, "FitResultsDialog")
+    labels = [lbl.text() for lbl in main_window.parameter_labels]
+    dlg = CarbonXS_GUI.FitResultsDialog(result, labels, parent=main_window)
+    assert dlg.table.rowCount() == 18
+    assert "1.2345" in dlg.summary_label.text()
+    assert "67.2" in dlg.summary_label.text()
+    dlg.close()

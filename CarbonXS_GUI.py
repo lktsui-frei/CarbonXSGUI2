@@ -239,6 +239,70 @@ class ConsoleStream(QtCore.QObject):
         return False
 
 
+class FitResultsDialog(QtGui.QDialog):
+    """Summary dialog showing refined parameters, ESDs, reduced chi-squared, and Lc."""
+
+    def __init__(self, result, param_labels, export_callback=None, parent=None):
+        super(FitResultsDialog, self).__init__(parent)
+        self.setWindowTitle("Fit Results")
+        self.resize(720, 560)
+        self._export_callback = export_callback
+
+        layout = QtGui.QVBoxLayout(self)
+
+        stats = result.get('stats') or {}
+        red_chi2 = stats.get('reduced_chi2', 0.0)
+        lc = stats.get('lc', 0.0)
+        slc = stats.get('slc', 0.0)
+        siga = stats.get('siga', np.zeros(len(param_labels)))
+
+        status_text = "Converged" if result.get('success', False) else "Did Not Converge"
+        self.summary_label = QtGui.QLabel(
+            f"<b>Status:</b> {status_text} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"<b>Reduced Chi^2:</b> {red_chi2:.5g} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"<b>Lc:</b> {lc:.2f} ± {slc:.2f} Å<br>"
+            f"<span>{result.get('message', '')}</span>"
+        )
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        old_params = result.get('initial_params', result.get('final_params', []))
+        new_params = result.get('final_params', [])
+
+        self.table = QtGui.QTableWidget(len(param_labels), 4, self)
+        self.table.setHorizontalHeaderLabels(["Parameter", "Old Value", "New Value", "ESD"])
+        self.table.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        for idx, label in enumerate(param_labels):
+            old_val = old_params[idx] if idx < len(old_params) else 0.0
+            new_val = new_params[idx] if idx < len(new_params) else 0.0
+            esd_val = siga[idx] if idx < len(siga) else 0.0
+            esd_str = f"{esd_val:.6g}" if esd_val > 0.0 else "Fixed"
+
+            self.table.setItem(idx, 0, QtGui.QTableWidgetItem(label))
+            self.table.setItem(idx, 1, QtGui.QTableWidgetItem(f"{old_val:.6g}"))
+            self.table.setItem(idx, 2, QtGui.QTableWidgetItem(f"{new_val:.6g}"))
+            self.table.setItem(idx, 3, QtGui.QTableWidgetItem(esd_str))
+
+        self.table.resizeColumnsToContents()
+        layout.addWidget(self.table)
+
+        btn_layout = QtGui.QHBoxLayout()
+        btn_layout.addStretch()
+        self.export_button = QtGui.QPushButton("Export Results...", self)
+        self.export_button.clicked.connect(self._on_export)
+        self.close_button = QtGui.QPushButton("Close", self)
+        self.close_button.clicked.connect(self.accept)
+        btn_layout.addWidget(self.export_button)
+        btn_layout.addWidget(self.close_button)
+        layout.addLayout(btn_layout)
+
+    def _on_export(self):
+        if self._export_callback is not None:
+            self._export_callback()
+
+
 class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def __init__(self, version):
@@ -2067,12 +2131,33 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         # Write carbon.inp (current params)
         self.write_carboninp(os.path.join(out_dir, 'carbon.inp'))
         
-        # Write carbon.out (log)
+        # Write carbon.out (Fortran-style summary log)
         with open(os.path.join(out_dir, 'carbon.out'), 'w') as f:
-            f.write("Python Port Fit Results\n")
+            f.write("CarbonXS Python Port Results\n")
             if result['mode'] == 'fit':
                 f.write("Success: %s\n" % result['success'])
                 f.write("Message: %s\n" % result['message'])
+                stats = result.get('stats')
+                if stats:
+                    f.write("Reduced Chi^2 = %.6E\n\n" % stats['reduced_chi2'])
+                    f.write("Final Parameters\n")
+                    f.write("Old Value       New Value       (esd)           Description\n")
+                    old_params = result.get('initial_params', result['final_params'])
+                    new_params = result['final_params']
+                    siga = stats['siga']
+                    for idx, label in enumerate(self.parameter_labels):
+                        if siga[idx] > 0.0:
+                            f.write("%12.6E    %12.6E   (%12.6E) %s\n" % (old_params[idx], new_params[idx], siga[idx], label.text()))
+                        else:
+                            f.write("%12.6E    %12.6E                  %s\n" % (old_params[idx], new_params[idx], label.text()))
+                    f.write("\nLc = %7.1f (%5.1f)\n\n" % (stats['lc'], stats['slc']))
+                    f.write("Correlation Matrix\n")
+                    npar = len(self.parameter_labels)
+                    f.write(" 0  " + "".join("%4d" % (j + 1) for j in range(npar)) + "\n")
+                    corr = stats['corr']
+                    for i in range(npar):
+                        row_vals = "".join("%4d" % int(round(corr[i, j])) for j in range(npar))
+                        f.write("%2d  %s\n" % (i + 1, row_vals))
 
     def _disconnect_worker_signals(self):
         if not self.worker_thread:
@@ -2129,6 +2214,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             
             print(f"Fit finished. Success: {result['success']}, Message: {result['message']}")
             print(f"Data points: {len(self.x_fit_data)}")
+            stats = result.get('stats')
+            if stats:
+                print(f"Reduced Chi^2: {stats['reduced_chi2']:.6g}, Lc: {stats['lc']:.2f} +/- {stats['slc']:.2f} A")
             
             # Update GUI parameters
             # Need to map back to parameter list
@@ -2159,13 +2247,11 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
              self.undo_index = len(self.undo_buffer)-1
         self.check_undo_index()
              
-        # Export dialog (only for fit)
+        # Show fit summary dialog with ESDs, Lc, and Export option
         if result['mode'] == 'fit':
-             reply = QtGui.QMessageBox.question(self, 'Fit Completed',
-                                                "Export the results?", QtGui.QMessageBox.Yes |
-                                                QtGui.QMessageBox.No, QtGui.QMessageBox.No)
-             if reply == QtGui.QMessageBox.Yes:
-                 self.export_fit_results()
+            labels = [lbl.text() for lbl in self.parameter_labels]
+            dlg = FitResultsDialog(result, labels, export_callback=self.export_fit_results, parent=self)
+            dlg.exec()
 
     def on_worker_error(self, error_msg):
         # Properly disconnect signals and schedule deletion before clearing reference
