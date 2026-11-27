@@ -257,3 +257,42 @@ def test_cooperative_abort(fitter, model):
 
     with pytest.raises(FitAbortedError):
         fitter.fit(init, refine_flags, x_obs, y_obs, loss_callback=on_loss, abort_event=abort_event)
+
+
+def test_compute_fit_statistics(fitter, model):
+    """Test compute_fit_statistics returns reduced_chi2, ESDs, correlation matrix, and Lc."""
+    params = np.zeros(18)
+    params[0] = 500.0
+    params[7] = 2.46
+    params[8] = 3.36
+    params[9] = 50.0
+    params[10] = 15.0
+    params[11] = 2.0
+
+    x_obs = np.linspace(15.0, 90.0, 151)
+    s_array = 2.0 * np.sin(np.radians(x_obs / 2.0)) / 1.5418
+    model.set_parameters(params, n_layers_model=1)
+    rng = np.random.default_rng(123)
+    y_true = model.all_inten(s_array, model.params)
+    y_obs = y_true + rng.normal(0.0, np.sqrt(np.maximum(y_true, 1.0)))
+
+    init = params.copy()
+    init[0] = 450.0
+    init[8] = 3.38
+    init[10] = 13.0
+    refine_flags = [False] * 18
+    refine_flags[0] = True
+    refine_flags[8] = True
+    refine_flags[10] = True
+
+    final_params, res = fitter.fit(init, refine_flags, x_obs, y_obs)
+    stats = fitter.compute_fit_statistics(final_params, refine_flags, res)
+
+    assert stats['reduced_chi2'] > 0.0
+    assert len(stats['siga']) == 18
+    assert stats['siga'][0] > 0.0 and stats['siga'][8] > 0.0 and stats['siga'][10] > 0.0
+    assert stats['siga'][7] == 0.0  # Fixed parameter
+    assert stats['corr'].shape == (18, 18)
+    assert np.isclose(stats['corr'][0, 0], 100.0)
+    assert np.isclose(stats['lc'], final_params[8] * final_params[10])
+    assert np.isfinite(stats['slc']) and stats['slc'] > 0.0

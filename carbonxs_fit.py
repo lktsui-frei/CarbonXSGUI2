@@ -159,3 +159,51 @@ class CarbonXSFit:
         
         return final_params, res
 
+    def compute_fit_statistics(self, final_params, refine_mask, res):
+        """
+        Compute Fortran-compatible fit statistics from scipy OptimizeResult:
+        reduced_chi2, parameter ESDs (siga), 18x18 correlation matrix (%), and Lc +/- slc.
+        """
+        final_params = np.asarray(final_params, dtype=np.float64)
+        mask = np.asarray(refine_mask, dtype=bool)
+        npar = len(final_params)
+
+        siga = np.zeros(npar, dtype=np.float64)
+        corr = np.zeros((npar, npar), dtype=np.float64)
+        reduced_chi2 = 0.0
+
+        if res is not None and hasattr(res, 'fun') and res.fun is not None:
+            ndat = len(res.fun)
+            mfit = int(np.sum(mask))
+            dof = max(ndat - mfit, 1)
+            reduced_chi2 = float(np.sum(res.fun**2) / dof)
+
+            if mfit > 0 and hasattr(res, 'jac') and res.jac is not None and res.jac.size > 0:
+                cov_sub = np.linalg.pinv(res.jac.T @ res.jac)
+                cov_full = np.zeros((npar, npar), dtype=np.float64)
+                refined_idx = np.flatnonzero(mask)
+                cov_full[np.ix_(refined_idx, refined_idx)] = cov_sub
+
+                siga = np.sqrt(np.maximum(np.diag(cov_full), 0.0))
+                denom = np.outer(siga, siga)
+                valid = denom > 0.0
+                corr[valid] = (cov_full[valid] / denom[valid]) * 100.0
+
+        d002 = final_params[8]
+        m_layers = final_params[10]
+        lc = float(d002 * m_layers)
+        rel_sq = 0.0
+        if abs(d002) > 1e-12:
+            rel_sq += (siga[8] / d002) ** 2
+        if abs(m_layers) > 1e-12:
+            rel_sq += (siga[10] / m_layers) ** 2
+        slc = float(abs(lc) * np.sqrt(rel_sq))
+
+        return {
+            'reduced_chi2': reduced_chi2,
+            'siga': siga,
+            'corr': corr,
+            'lc': lc,
+            'slc': slc,
+        }
+
