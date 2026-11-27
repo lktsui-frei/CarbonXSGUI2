@@ -2459,18 +2459,18 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
     def open_documentation(self):
 
         """
-        Opens the documentation in /docs/index.html
+        Opens the documentation in docs/README.md on GitHub.
         :return:
         """
-        webbrowser.open("https://lktsui.github.io/carbon_xs_gui/")
+        webbrowser.open("https://github.com/lktsui-frei/CarbonXSGUI2/blob/master/docs/README.md")
 
 
     def open_bug_report_page(self):
         """
-        Opens the a link to the bug report page
+        Opens a link to the bug report page on GitHub.
         :return:
         """
-        webbrowser.open("https://github.com/lktsui/carbon_xs_gui/issues")
+        webbrowser.open("https://github.com/lktsui-frei/CarbonXSGUI2/issues")
 
     def open_about_dialog(self):
         """
