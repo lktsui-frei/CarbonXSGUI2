@@ -31,15 +31,15 @@ def read_carbon_inp(filename):
     
     return params, lam, nphi, nsg, nlayer, rdens, l0, wd, ww, bw
 
-def test_regression_vs_fortran():
-    """Compare Python output against Fortran ground truth."""
-    # Paths
+@pytest.mark.parametrize("fixture_prefix", ["fortran_1layer", "fortran_2layer"])
+def test_regression_vs_fortran(fixture_prefix):
+    """Compare Python output against immutable Fortran ground truth."""
     base_dir = os.path.dirname(os.path.dirname(__file__))
-    inp_file = os.path.join(base_dir, 'carbonxs', 'carbon.inp')
-    dat_file = os.path.join(base_dir, 'carbonxs', 'carbon.dat')
+    inp_file = os.path.join(base_dir, 'tests', 'fixtures', f'{fixture_prefix}.inp')
+    dat_file = os.path.join(base_dir, 'tests', 'fixtures', f'{fixture_prefix}.dat')
     
-    assert os.path.exists(inp_file), "carbon.inp not found"
-    assert os.path.exists(dat_file), "carbon.dat not found"
+    assert os.path.exists(inp_file), f"{inp_file} not found"
+    assert os.path.exists(dat_file), f"{dat_file} not found"
     
     # Load parameters
     params, lam, nphi, nsg, nlayer, rdens, l0, wd, ww, bw = read_carbon_inp(inp_file)
@@ -47,7 +47,7 @@ def test_regression_vs_fortran():
     # Load ground truth
     data = np.loadtxt(dat_file)
     x_gt = data[:, 0]
-    y_gt = data[:, 2] # Column 3 is fit/calc in the dat file usually? verify_port says col 2 (0-indexed)
+    y_gt = data[:, 2]
     
     # Setup model
     model = CarbonXSModel()
@@ -67,24 +67,13 @@ def test_regression_vs_fortran():
     s_array = 2 * np.sin(theta_rad) / lam
     y_py = model.all_inten(s_array, model.params)
     
-    # Compare
-    # Tolerance: verify_port showed RMS diff around 1e-6 or less.
-    # Let's use a relative tolerance or a small absolute tolerance.
-    # verify_port reported "Mean Relative Error: 0.000000%" (likely very small)
-    
     diff = y_py - y_gt
-    rms_diff = np.sqrt(np.mean(diff**2))
-    
-    print(f"Regression RMS Diff: {rms_diff}")
-    
-    # We expect very close agreement
-    # We expect very close agreement
-    # verify_port.py shows RMS diff ~ 2.0 and Mean Relative Error ~ 0.03%
-    # So we assert relative error is small
-    rel_err = np.mean(np.abs(diff) / (np.abs(y_gt) + 1e-6)) * 100
-    print(f"Regression Relative Error: {rel_err}%")
+    rel = np.abs(diff) / (np.abs(y_gt) + 1e-6) * 100
+    rel_err = np.mean(rel)
+    boundary_rel = np.max(rel[-5:])
     
     assert rel_err < 0.1
+    assert boundary_rel < 1.0
 
 def test_model_consistency():
     """Test 1-layer vs 2-layer parameter rescaling."""

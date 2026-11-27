@@ -48,16 +48,15 @@ def read_carbon_dat(filename):
     return data[:, 0], data[:, 2]  # X, Y_fit
 
 
-@pytest.mark.skipif(
-    not os.path.exists('carbonxs/carbon.inp'),
-    reason="Fortran reference data not available"
-)
-def test_port_verification():
-    """Test that Python port matches Fortran implementation."""
-    # Get paths to reference files
+@pytest.mark.parametrize("fixture_prefix", ["fortran_1layer", "fortran_2layer"])
+def test_port_verification(fixture_prefix):
+    """Test that Python port matches immutable Fortran implementation for 1-layer and 2-layer models."""
     base_dir = os.path.dirname(os.path.dirname(__file__))
-    inp_file = os.path.join(base_dir, 'carbonxs', 'carbon.inp')
-    dat_file = os.path.join(base_dir, 'carbonxs', 'carbon.dat')
+    inp_file = os.path.join(base_dir, 'tests', 'fixtures', f'{fixture_prefix}.inp')
+    dat_file = os.path.join(base_dir, 'tests', 'fixtures', f'{fixture_prefix}.dat')
+    
+    assert os.path.exists(inp_file), f"Fortran fixture not found: {inp_file}"
+    assert os.path.exists(dat_file), f"Fortran fixture not found: {dat_file}"
     
     # Load parameters and settings
     params, lam, nphi, nsg, nlayer, rdens, l0, wd, ww, bw = read_carbon_inp(inp_file)
@@ -79,8 +78,6 @@ def test_port_verification():
     model.set_parameters(params, n_layers_model=nlayer)
     
     # Calculate S array
-    # S = 2*sin(theta)/lambda
-    # theta = x/2 (degrees) -> radians
     theta_rad = np.radians(x_gt / 2.0)
     s_array = 2 * np.sin(theta_rad) / lam
     
@@ -89,22 +86,14 @@ def test_port_verification():
     
     # Compare results
     diff = y_py - y_gt
-    max_diff = np.max(np.abs(diff))
-    rms_diff = np.sqrt(np.mean(diff**2))
-    rel_err = np.mean(np.abs(diff) / (np.abs(y_gt) + 1e-6)) * 100
+    rel_err = np.abs(diff) / (np.abs(y_gt) + 1e-6) * 100
+    mean_rel_err = np.mean(rel_err)
+    boundary_rel_err = np.max(rel_err[-5:])
     
-    # Print statistics for debugging
-    print(f"\nPort Verification Statistics:")
-    print(f"  Max Difference: {max_diff:.6e}")
-    print(f"  RMS Difference: {rms_diff:.6e}")
-    print(f"  Mean Relative Error: {rel_err:.6f}%")
-    
-    # Assert reasonable agreement
-    # These thresholds account for numerical differences between Python and Fortran
-    # implementations, including differences in floating point calculations and optimizations
-    assert max_diff < 100.0, f"Max difference {max_diff} exceeds threshold"
-    assert rms_diff < 10.0, f"RMS difference {rms_diff} exceeds threshold"
-    assert rel_err < 5.0, f"Mean relative error {rel_err}% exceeds 5%"
+    assert mean_rel_err < 0.1, f"{fixture_prefix} mean relative error {mean_rel_err:.4f}% exceeds 0.1%"
+    assert boundary_rel_err < 1.0, (
+        f"{fixture_prefix} high-angle boundary relative error {boundary_rel_err:.4f}% exceeds 1.0%"
+    )
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import warnings
 import pytest
 import numpy as np
 from carbonxs_core import CarbonXSModel
@@ -120,3 +121,71 @@ def test_inten_zero_scale(model):
     s = 0.5
     val = model.inten(s, params)
     assert val == 0.0
+
+
+def test_gmod_zero_q_pr1_and_strain_underflow(model):
+    """Test gmod returns 1/m with no NaN or RuntimeWarning when q == 0."""
+    m = 10.0
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        # Pr = 1.0 on (1, 0) rod -> ehk = 0 -> q = 0
+        g_sm0 = model.gmod(1, 0, np.array([0.5]), m=m, sm=0.0, del_strain=0.01, pr=1.0, pt=0.0)
+        g_sm1 = model.gmod(1, 0, np.array([0.5]), m=m, sm=1.0, del_strain=0.01, pr=1.0, pt=0.0)
+        # Huge del_strain -> edel underflows to 0 -> q = 0
+        g_underflow = model.gmod(0, 0, np.array([1.0]), m=m, sm=1.0, del_strain=100.0, pr=0.0, pt=1.0)
+
+    runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert len(runtime_warnings) == 0, f"Unexpected RuntimeWarnings: {[str(w.message) for w in runtime_warnings]}"
+    assert np.isclose(g_sm0[0], 1.0 / m)
+    assert np.isclose(g_sm1[0], 1.0 / m)
+    assert np.isclose(g_underflow[0], 1.0 / m)
+
+
+def test_gmod_smooth_near_singularity(model):
+    """Test gmod has no catastrophic cancellation or jump near q -> 1."""
+    m = 50.0
+    sm = 5.0
+    g0 = model.gmod(0, 0, np.array([0.0]), m=m, sm=sm, del_strain=0.02, pr=0.0, pt=1.0)[0]
+    l_vals = np.array([1e-8, 1e-7, 4e-7, 1e-6, 1e-5, 1e-4])
+    g_vals = model.gmod(0, 0, l_vals, m=m, sm=sm, del_strain=0.02, pr=0.0, pt=1.0)
+
+    assert np.all(np.isfinite(g_vals))
+    # Near l = 0, G(l) deviates from G(0) by O((m * pi * l)^2) ~ 1e-9 at l=4e-7
+    assert abs(g_vals[2] - g0) < 1e-6, f"Cancellation error at l=4e-7: {g_vals[2]} vs {g0}"
+    # Smooth monotonic decrease from l=0 for small l on (0,0) rod
+    assert np.all(np.diff(np.concatenate([[g0], g_vals])) <= 1e-12)
+
+
+def test_phint_exact_s1_and_large_nphi(model):
+    """Test phint handles exact s == s1 without RuntimeWarning and does not truncate NPHI > 50."""
+    a_cell, d002, la, dab = 2.46, 3.35, 50.0, 0.0
+    s0 = np.sqrt(4.0 / 3.0) / a_cell
+    sig = (2.0 / np.sqrt(3.0 * np.pi) / la + dab * s0) / 2.0
+    s1 = s0 - model.NSG * sig
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ph_s1 = model.phint(1, 0, np.array([s1]), a_cell, d002, la, 10.0, 1.0, dab, 0.01, 0.1, 0.0, 0.0)
+
+    runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert len(runtime_warnings) == 0, f"Unexpected RuntimeWarnings: {[str(w.message) for w in runtime_warnings]}"
+    assert ph_s1[0] == 0.0
+
+    # NPHI=60 vs NPHI=40 at s=s0 should agree closely (< 1%) rather than truncating at 100 steps
+    model.NPHI = 40
+    ph_40 = model.phint(1, 0, np.array([s0]), a_cell, d002, la, 10.0, 1.0, dab, 0.01, 0.1, 0.0, 0.0)[0]
+    model.NPHI = 60
+    ph_60 = model.phint(1, 0, np.array([s0]), a_cell, d002, la, 10.0, 1.0, dab, 0.01, 0.1, 0.0, 0.0)[0]
+    assert abs(ph_60 - ph_40) / ph_40 < 0.01, f"NPHI=60 ({ph_60}) diverged from NPHI=40 ({ph_40})"
+
+
+def test_set_parameters_float64_and_dth_zero_guard(model):
+    """Test set_parameters avoids integer truncation in 2-layer mode and all_inten rejects dth == 0."""
+    int_params = [1] * 18
+    model.set_parameters(int_params, n_layers_model=2)
+    assert np.isclose(model.params[10], 0.5), f"Expected 0.5, got {model.params[10]}"
+    assert np.isclose(model.params[11], 0.5), f"Expected 0.5, got {model.params[11]}"
+
+    s_dup = np.array([0.2, 0.2, 0.3])
+    with pytest.raises(ValueError):
+        model.all_inten(s_dup, model.params)
