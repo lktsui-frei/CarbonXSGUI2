@@ -4,7 +4,7 @@
 
 This tutorial covers configuring CarbonXS parameters and diffractometer settings, loading experimental XRD patterns, running single calculations and least-squares refinements, interpreting plots and fit diagnostics, and exporting results.
 
-For the mathematical formulation of the scattering model and original parameter definitions, see the included [CarbonXS Manual (PDF)](manual.pdf).
+For the mathematical formulation of the scattering model and original parameter definitions, see [Shi, Reimers, and Dahn (1993)](https://onlinelibrary.wiley.com/doi/abs/10.1107/S0021889893003784) and the included [CarbonXS Manual (PDF)](manual.pdf).
 
 ---
 
