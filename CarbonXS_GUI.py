@@ -239,6 +239,70 @@ class ConsoleStream(QtCore.QObject):
         return False
 
 
+class FitResultsDialog(QtGui.QDialog):
+    """Summary dialog showing refined parameters, ESDs, reduced chi-squared, and Lc."""
+
+    def __init__(self, result, param_labels, export_callback=None, parent=None):
+        super(FitResultsDialog, self).__init__(parent)
+        self.setWindowTitle("Fit Results")
+        self.resize(720, 560)
+        self._export_callback = export_callback
+
+        layout = QtGui.QVBoxLayout(self)
+
+        stats = result.get('stats') or {}
+        red_chi2 = stats.get('reduced_chi2', 0.0)
+        lc = stats.get('lc', 0.0)
+        slc = stats.get('slc', 0.0)
+        siga = stats.get('siga', np.zeros(len(param_labels)))
+
+        status_text = "Converged" if result.get('success', False) else "Did Not Converge"
+        self.summary_label = QtGui.QLabel(
+            f"<b>Status:</b> {status_text} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"<b>Reduced Chi^2:</b> {red_chi2:.5g} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"<b>Lc:</b> {lc:.2f} ± {slc:.2f} Å<br>"
+            f"<span>{result.get('message', '')}</span>"
+        )
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        old_params = result.get('initial_params', result.get('final_params', []))
+        new_params = result.get('final_params', [])
+
+        self.table = QtGui.QTableWidget(len(param_labels), 4, self)
+        self.table.setHorizontalHeaderLabels(["Parameter", "Old Value", "New Value", "ESD"])
+        self.table.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        for idx, label in enumerate(param_labels):
+            old_val = old_params[idx] if idx < len(old_params) else 0.0
+            new_val = new_params[idx] if idx < len(new_params) else 0.0
+            esd_val = siga[idx] if idx < len(siga) else 0.0
+            esd_str = f"{esd_val:.6g}" if esd_val > 0.0 else "Fixed"
+
+            self.table.setItem(idx, 0, QtGui.QTableWidgetItem(label))
+            self.table.setItem(idx, 1, QtGui.QTableWidgetItem(f"{old_val:.6g}"))
+            self.table.setItem(idx, 2, QtGui.QTableWidgetItem(f"{new_val:.6g}"))
+            self.table.setItem(idx, 3, QtGui.QTableWidgetItem(esd_str))
+
+        self.table.resizeColumnsToContents()
+        layout.addWidget(self.table)
+
+        btn_layout = QtGui.QHBoxLayout()
+        btn_layout.addStretch()
+        self.export_button = QtGui.QPushButton("Export Results...", self)
+        self.export_button.clicked.connect(self._on_export)
+        self.close_button = QtGui.QPushButton("Close", self)
+        self.close_button.clicked.connect(self.accept)
+        btn_layout.addWidget(self.export_button)
+        btn_layout.addWidget(self.close_button)
+        layout.addLayout(btn_layout)
+
+    def _on_export(self):
+        if self._export_callback is not None:
+            self._export_callback()
+
+
 class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def __init__(self, version):
@@ -343,7 +407,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         self.init_ui_elements()
 
-        self.fig = Figure()
+        self.fig = Figure(layout='constrained')
         self.ax = self.fig.add_subplot(111)
 
         self.x_data = []
@@ -844,12 +908,18 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.show_previous.setText("Show Previous Fit")
         self.show_previous.setToolTip("Shows the Previous Iteration's Fit Result")
 
+        self.log_y_axis = QtGui.QCheckBox(self)
+        self.log_y_axis.setText("Log Y-Axis")
+        self.log_y_axis.setToolTip("Toggle between logarithmic and linear Y-axis scale.")
+        self.log_y_axis.setChecked(True)
+
         self.plot_buttons_layout.addWidget(self.plot_pattern_button)
         self.plot_buttons_layout.addWidget(self.plot_difference_button)
 
         self.plot_buttons_layout.addWidget(self.lock_y_axis)
         self.plot_buttons_layout.addWidget(self.lock_x_axis)
         self.plot_buttons_layout.addWidget(self.show_previous)
+        self.plot_buttons_layout.addWidget(self.log_y_axis)
 
 
 
@@ -905,6 +975,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         # Graph buttons
         self.plot_pattern_button.clicked.connect(self.plot_loaded_data)
         self.plot_difference_button.clicked.connect(self.plot_difference)
+        self.log_y_axis.toggled.connect(lambda _checked: self.plot_loaded_data())
 
         # Help Menu
         self.menu_tutorial.triggered.connect(self.open_documentation)
@@ -1292,7 +1363,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.fig.clf()
         
         # Use GridSpec to create two subplots with width ratio 3:1
-        gs = GridSpec(1, 2, width_ratios=[3, 1])
+        gs = GridSpec(1, 2, width_ratios=[3, 1], figure=self.fig)
         self.ax = self.fig.add_subplot(gs[0])
         self.ax_loss = self.fig.add_subplot(gs[1])
 
@@ -1321,7 +1392,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         else:
             self.ax.set_title("Fit Pattern")
 
-        self.ax.set_yscale('log')
+        use_log_y = self.log_y_axis.isChecked() if hasattr(self, 'log_y_axis') else True
+        self.ax.set_yscale('log' if use_log_y else 'linear')
         self.ax.legend(fontsize=14, frameon=True)
         self.ax.grid(True)
 
@@ -1329,7 +1401,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         # Otherwise, let matplotlib auto-scale to fit the data
         if self.lock_y_axis.isChecked() and hasattr(self, 'y_limit') and self.y_limit is not None:
             y_min, y_max = self.y_limit
-            if y_min > 0 and y_max > y_min:  # Valid for log scale
+            if (not use_log_y or y_min > 0) and y_max > y_min:
                 self.ax.set_ylim(self.y_limit)
             else:
                 print(f"Ignoring invalid y_limit: {self.y_limit}")
@@ -2059,12 +2131,33 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         # Write carbon.inp (current params)
         self.write_carboninp(os.path.join(out_dir, 'carbon.inp'))
         
-        # Write carbon.out (log)
+        # Write carbon.out (Fortran-style summary log)
         with open(os.path.join(out_dir, 'carbon.out'), 'w') as f:
-            f.write("Python Port Fit Results\n")
+            f.write("CarbonXS Python Port Results\n")
             if result['mode'] == 'fit':
                 f.write("Success: %s\n" % result['success'])
                 f.write("Message: %s\n" % result['message'])
+                stats = result.get('stats')
+                if stats:
+                    f.write("Reduced Chi^2 = %.6E\n\n" % stats['reduced_chi2'])
+                    f.write("Final Parameters\n")
+                    f.write("Old Value       New Value       (esd)           Description\n")
+                    old_params = result.get('initial_params', result['final_params'])
+                    new_params = result['final_params']
+                    siga = stats['siga']
+                    for idx, label in enumerate(self.parameter_labels):
+                        if siga[idx] > 0.0:
+                            f.write("%12.6E    %12.6E   (%12.6E) %s\n" % (old_params[idx], new_params[idx], siga[idx], label.text()))
+                        else:
+                            f.write("%12.6E    %12.6E                  %s\n" % (old_params[idx], new_params[idx], label.text()))
+                    f.write("\nLc = %7.1f (%5.1f)\n\n" % (stats['lc'], stats['slc']))
+                    f.write("Correlation Matrix\n")
+                    npar = len(self.parameter_labels)
+                    f.write(" 0  " + "".join("%4d" % (j + 1) for j in range(npar)) + "\n")
+                    corr = stats['corr']
+                    for i in range(npar):
+                        row_vals = "".join("%4d" % int(round(corr[i, j])) for j in range(npar))
+                        f.write("%2d  %s\n" % (i + 1, row_vals))
 
     def _disconnect_worker_signals(self):
         if not self.worker_thread:
@@ -2121,6 +2214,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             
             print(f"Fit finished. Success: {result['success']}, Message: {result['message']}")
             print(f"Data points: {len(self.x_fit_data)}")
+            stats = result.get('stats')
+            if stats:
+                print(f"Reduced Chi^2: {stats['reduced_chi2']:.6g}, Lc: {stats['lc']:.2f} +/- {stats['slc']:.2f} A")
             
             # Update GUI parameters
             # Need to map back to parameter list
@@ -2151,13 +2247,11 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
              self.undo_index = len(self.undo_buffer)-1
         self.check_undo_index()
              
-        # Export dialog (only for fit)
+        # Show fit summary dialog with ESDs, Lc, and Export option
         if result['mode'] == 'fit':
-             reply = QtGui.QMessageBox.question(self, 'Fit Completed',
-                                                "Export the results?", QtGui.QMessageBox.Yes |
-                                                QtGui.QMessageBox.No, QtGui.QMessageBox.No)
-             if reply == QtGui.QMessageBox.Yes:
-                 self.export_fit_results()
+            labels = [lbl.text() for lbl in self.parameter_labels]
+            dlg = FitResultsDialog(result, labels, export_callback=self.export_fit_results, parent=self)
+            dlg.exec()
 
     def on_worker_error(self, error_msg):
         # Properly disconnect signals and schedule deletion before clearing reference
@@ -2290,30 +2384,26 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def export_fit_results(self):
         """
-        Copies the carbon.out, carbon.dat, and carbon.inp files currently in the carbonxs
-        directory to a destination of your choice.
-        :return:
+        Exports the carbon.out, carbon.dat, and carbon.inp files from the most recent run,
+        or exports the calculated pattern in Jade MDI format.
         """
 
-        if not len(self.x_data):
-            reply = QtGui.QMessageBox.warning(self, 'Export Data',
-                    "No data currently loaded.",
-                                              QtGui.QMessageBox.Close)
-
+        if not len(self.x_data) and not len(self.x_fit_data):
+            QtGui.QMessageBox.warning(self, 'Export Data', "No data currently loaded.", QtGui.QMessageBox.Close)
             return
 
-        if self.default_export_dir:
-
-             fname, _ = QtGui.QFileDialog.getSaveFileName(self, 'Select Base Name For Results',self.default_export_dir,
-                                                     "Full Export (*);; Jade MDI Format (*.mdi)")
-        else:
-             fname, _ = QtGui.QFileDialog.getSaveFileName(self, 'Select Base Name For Results',user_data_directory,
-                                                     "Full Export (*);; Jade MDI Format (*.mdi)")
-
+        start_dir = self.default_export_dir if self.default_export_dir else user_data_directory
+        fname, selected_filter = QtGui.QFileDialog.getSaveFileName(
+            self,
+            'Select Base Name For Results',
+            start_dir,
+            "Full Export (*.*);;Jade MDI Format (*.mdi)",
+        )
 
         if fname:
-
-            if fname.endswith('.mdi'):
+            if "Jade MDI" in selected_filter or fname.lower().endswith('.mdi'):
+                if not fname.lower().endswith('.mdi'):
+                    fname = fname + '.mdi'
                 print("Exporting fit results to Jade MDI Format")
 
                 directory, _ = os.path.split(fname)
@@ -2324,35 +2414,39 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             else:
                 out_dir = self.get_runtime_output_dir()
                 out_files = os.listdir(out_dir) if os.path.exists(out_dir) else []
-                for data_file, export_suffix in [('carbon.out', '_carbon_out.txt'), ('carbon.dat', '_carbon_dat.txt'), ('carbon.inp','_carbon.inp')]:
+                export_pairs = [('carbon.out', '_carbon_out.txt'), ('carbon.dat', '_carbon_dat.txt'), ('carbon.inp', '_carbon.inp')]
+                if not any(data_file in out_files for data_file, _ in export_pairs):
+                    QtGui.QMessageBox.warning(
+                        self,
+                        'Export Data',
+                        "No recent calculation or fit results found to export.",
+                        QtGui.QMessageBox.Close,
+                    )
+                    return
 
-                    # Checks if the files exist in the runtime output directory
+                for data_file, export_suffix in export_pairs:
                     if data_file in out_files:
-
                         destination = fname + export_suffix
                         directory, filename = os.path.split(destination)
 
-                        # Checks if the destination files already exists
                         if os.path.exists(destination):
-
-                            # Prompts user to overwrite if it does
-                            reply = QtGui.QMessageBox.question(self, 'Fit Completed',
-                                                               "%s exists. Overwrite?"%filename, QtGui.QMessageBox.Yes |
-                                                               QtGui.QMessageBox.No, QtGui.QMessageBox.No)
+                            reply = QtGui.QMessageBox.question(
+                                self,
+                                'Export Results',
+                                "%s exists. Overwrite?" % filename,
+                                QtGui.QMessageBox.Yes | QtGui.QMessageBox.No,
+                                QtGui.QMessageBox.No,
+                            )
                             if reply == QtGui.QMessageBox.Yes:
-
                                 self.default_export_dir = directory
-                                shutil.copy(os.path.join(out_dir, data_file), fname + export_suffix)
+                                shutil.copy(os.path.join(out_dir, data_file), destination)
                                 print("Copied %s file to %s. (Overwrote old file)" % (data_file, destination))
                             else:
                                 print("%s already exists. Did not overwrite." % destination)
-
                         else:
-
-                            self.default_export_dir =directory
-
+                            self.default_export_dir = directory
                             shutil.copy(os.path.join(out_dir, data_file), destination)
-                            print("Copied %s file to %s" %(data_file, destination))
+                            print("Copied %s file to %s" % (data_file, destination))
 
 
 

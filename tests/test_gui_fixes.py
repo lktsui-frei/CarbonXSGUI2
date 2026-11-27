@@ -265,3 +265,123 @@ def test_data_io_closes_files_and_roundtrips(tmp_path):
     assert len(res_warnings) == 0, f"Unclosed file handles: {[str(w.message) for w in res_warnings]}"
     assert len(rx) == len(x) and len(ry) == len(y)
     assert list(tx) == [20.0, 21.0] and list(ty) == [100.0, 150.0]
+
+
+def test_log_linear_y_axis_toggle(main_window):
+    """log_y_axis checkbox should default to checked ('log') and toggle to 'linear'."""
+    main_window.wavelength.setValue(1.5418)
+    main_window.theta_min_value.setValue(20.0)
+    main_window.theta_max_value.setValue(30.0)
+    main_window.x_data = [20.0, 25.0, 30.0]
+    main_window.y_data = [100.0, 200.0, 150.0]
+
+    assert hasattr(main_window, "log_y_axis")
+    assert main_window.log_y_axis.isChecked()
+    main_window.plot_loaded_data()
+    assert main_window.ax.get_yscale() == "log"
+
+    main_window.log_y_axis.setChecked(False)
+    assert main_window.ax.get_yscale() == "linear"
+
+
+def test_fortran_carbon_out_and_fit_results_dialog(main_window, tmp_path):
+    """write_results_to_disk writes Fortran-style stats to carbon.out and FitResultsDialog renders them."""
+    import numpy as np
+    initial_params = [1.0] * 18
+    final_params = [2.0] * 18
+    final_params[8] = 3.36
+    final_params[10] = 20.0
+    siga = np.zeros(18)
+    siga[0] = 0.05
+    siga[8] = 0.01
+    siga[10] = 0.5
+    corr = np.eye(18) * 100.0
+    stats = {
+        "reduced_chi2": 1.2345,
+        "siga": siga,
+        "corr": corr,
+        "lc": 67.2,
+        "slc": 1.69,
+    }
+    result = {
+        "mode": "fit",
+        "x": [20.0, 21.0],
+        "y_obs": [100.0, 110.0],
+        "y_calc": [99.5, 110.2],
+        "initial_params": initial_params,
+        "final_params": final_params,
+        "success": True,
+        "message": "Converged",
+        "stats": stats,
+    }
+    main_window.write_results_to_disk(result)
+    out_text = (tmp_path / "last_run" / "carbon.out").read_text()
+    assert "Reduced Chi^2" in out_text
+    assert "Final Parameters" in out_text
+    assert "Lc =" in out_text
+    assert "Correlation Matrix" in out_text
+
+    assert hasattr(CarbonXS_GUI, "FitResultsDialog")
+    labels = [lbl.text() for lbl in main_window.parameter_labels]
+    dlg = CarbonXS_GUI.FitResultsDialog(result, labels, parent=main_window)
+    assert dlg.table.rowCount() == 18
+    assert "1.2345" in dlg.summary_label.text()
+    assert "67.2" in dlg.summary_label.text()
+    dlg.close()
+
+
+def test_subplots_do_not_overlap(main_window):
+    """Fit Pattern subplot and Fitting Progress Loss label/ticks must not overlap."""
+    main_window.wavelength.setValue(1.5418)
+    main_window.theta_min_value.setValue(10.0)
+    main_window.theta_max_value.setValue(100.0)
+    main_window.x_data = [10.0, 50.0, 100.0]
+    main_window.y_data = [2000.0, 600.0, 250.0]
+    main_window.x_fit_data = [10.0, 50.0, 100.0]
+    main_window.y_fit_data = [2000.0, 600.0, 250.0]
+    main_window.loss_data = [2340.0, 2220.0, 2195.0]
+    main_window.canvas.resize(900, 500)
+
+    main_window.plot_loaded_data()
+    main_window.canvas.draw()
+    renderer = main_window.canvas.get_renderer()
+
+    left_bbox = main_window.ax.get_window_extent(renderer)
+    loss_ylabel_bbox = main_window.ax_loss.yaxis.label.get_window_extent(renderer)
+    assert loss_ylabel_bbox.x0 >= left_bbox.x1, (
+        f"Loss y-label (x0={loss_ylabel_bbox.x0:.1f}) overlaps left plot (x1={left_bbox.x1:.1f})"
+    )
+    for tick in main_window.ax_loss.get_yticklabels():
+        if tick.get_text():
+            tb = tick.get_window_extent(renderer)
+            assert tb.x0 >= left_bbox.x1, f"Loss tick '{tick.get_text()}' (x0={tb.x0:.1f}) overlaps left plot (x1={left_bbox.x1:.1f})"
+
+
+def test_export_fit_results_full_and_mdi(main_window, tmp_path, monkeypatch):
+    """export_fit_results uses Windows-compatible (*.*) filter and exports Full Export or MDI cleanly."""
+    main_window.x_data = [20.0, 21.0]
+    main_window.y_data = [100.0, 110.0]
+    main_window.x_fit_data = [20.0, 21.0]
+    main_window.y_fit_data = [99.0, 109.0]
+    main_window.write_results_to_disk({"mode": "calculate", "x": [20.0, 21.0], "y_calc": [99.0, 109.0]})
+
+    captured_filters = []
+
+    def fake_get_save_full(_parent, _title, _dir, filter_str):
+        captured_filters.append(filter_str)
+        return str(tmp_path / "my_fit"), "Full Export (*.*)"
+
+    monkeypatch.setattr(QtGui.QFileDialog, "getSaveFileName", fake_get_save_full)
+    main_window.export_fit_results()
+
+    assert captured_filters[0] == "Full Export (*.*);;Jade MDI Format (*.mdi)"
+    assert (tmp_path / "my_fit_carbon_out.txt").exists()
+    assert (tmp_path / "my_fit_carbon_dat.txt").exists()
+    assert (tmp_path / "my_fit_carbon.inp").exists()
+
+    def fake_get_save_mdi(_parent, _title, _dir, filter_str):
+        return str(tmp_path / "my_fit_mdi"), "Jade MDI Format (*.mdi)"
+
+    monkeypatch.setattr(QtGui.QFileDialog, "getSaveFileName", fake_get_save_mdi)
+    main_window.export_fit_results()
+    assert (tmp_path / "my_fit_mdi.mdi").exists()
