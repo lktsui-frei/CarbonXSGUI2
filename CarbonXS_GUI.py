@@ -3,6 +3,7 @@ import ujson
 import sys
 import os
 import signal
+import threading
 from pathlib import Path
 # Force matplotlib to use PySide6
 os.environ['QT_API'] = 'pyside6'
@@ -56,12 +57,13 @@ user_data_directory = appdirs.user_data_dir("CarbonXS_GUI")
 
 
 from carbonxs_core import CarbonXSModel
-from carbonxs_fit import CarbonXSFit
+from carbonxs_fit import CarbonXSFit, FitAbortedError
 
 class WorkerThread(QtCore.QThread):
     finished_signal = QtCore.Signal(object) # Emits result dict
     error_signal = QtCore.Signal(str)
     loss_signal = QtCore.Signal(float)
+    aborted_signal = QtCore.Signal()
 
     def __init__(self, mode, params, settings, data=None, refine_flags=None):
         super(WorkerThread, self).__init__()
@@ -70,6 +72,10 @@ class WorkerThread(QtCore.QThread):
         self.settings = settings
         self.data = data
         self.refine_flags = refine_flags
+        self.abort_event = threading.Event()
+
+    def request_abort(self):
+        self.abort_event.set()
         
     def run(self):
         try:
@@ -124,7 +130,15 @@ class WorkerThread(QtCore.QThread):
                 def loss_callback(cost):
                     self.loss_signal.emit(cost)
 
-                final_params, res = fitter.fit(self.params, self.refine_flags, x_obs, y_obs, max_nfev=max_nfev, loss_callback=loss_callback)
+                final_params, res = fitter.fit(
+                    self.params,
+                    self.refine_flags,
+                    x_obs,
+                    y_obs,
+                    max_nfev=max_nfev,
+                    loss_callback=loss_callback,
+                    abort_event=self.abort_event,
+                )
                 
                 # Recalculate pattern with final params
                 model.set_parameters(final_params, model.n_layers_model)
@@ -137,11 +151,13 @@ class WorkerThread(QtCore.QThread):
                     'x': x_obs,
                     'y_calc': y_calc,
                     'final_params': final_params,
-                    'success': res.success,
-                    'message': res.message
+                    'success': res.success if res is not None else True,
+                    'message': res.message if res is not None else 'No parameters selected for refinement',
                 }
                 self.finished_signal.emit(result)
                 
+        except FitAbortedError:
+            self.aborted_signal.emit()
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -198,6 +214,12 @@ class ConsoleStream(QtCore.QObject):
 
     def write(self, message):
         self.message.emit(str(message))
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
 
 
 class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
@@ -906,10 +928,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.menu_calculate_pattern.setStatusTip('Calculate Pattern')
         self.menu_start_fit.setStatusTip('Start Fit Process')
         self.menu_abort_fit.setStatusTip('Abort Fit Process')
-
-        self.menu_calculate_pattern.triggered.connect(self.calculate_pattern)
-        self.menu_start_fit.triggered.connect(self.call_fit_program)
-        self.menu_abort_fit.triggered.connect(self.abort_fit_process)
 
         self.back_button.setShortcut(QtGui.QKeySequence.Back)
         self.forward_button.setShortcut(QtGui.QKeySequence.Forward)
@@ -2054,16 +2072,29 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         for sig, slot in (
             (self.worker_thread.finished_signal, self.on_worker_finished),
             (self.worker_thread.error_signal, self.on_worker_error),
+            (self.worker_thread.aborted_signal, self.on_worker_aborted),
+            (self.worker_thread.loss_signal, self.update_loss_plot),
         ):
-            try:
-                sig.disconnect(slot)
-            except (RuntimeError, TypeError):
-                pass
-        if getattr(self.worker_thread, 'mode', None) == 'fit':
-            try:
-                self.worker_thread.loss_signal.disconnect(self.update_loss_plot)
-            except (RuntimeError, TypeError):
-                pass
+            meta_method = QtCore.QMetaMethod.fromSignal(sig)
+            if self.worker_thread.isSignalConnected(meta_method):
+                try:
+                    sig.disconnect(slot)
+                except (RuntimeError, TypeError):
+                    pass
+
+    def on_worker_aborted(self):
+        if self.worker_thread:
+            self._disconnect_worker_signals()
+            self.worker_thread.deleteLater()
+        self.worker_thread = None
+        print("Fitting/calculation aborted by user.")
+        self.menu_start_fit.setEnabled(True)
+        self.menu_calculate_pattern.setEnabled(True)
+        self.calculate_pattern_button.setEnabled(True)
+        self.fit_pattern_button.setEnabled(True)
+        self.menu_abort_fit.setEnabled(False)
+        self.abort_fit_button.setEnabled(False)
+        self.check_undo_index()
 
     def on_worker_finished(self, result):
         # Properly disconnect signals and schedule deletion before clearing reference
@@ -2179,6 +2210,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.worker_thread = WorkerThread('fit', params, settings, data, refine_flags)
         self.worker_thread.finished_signal.connect(self.on_worker_finished)
         self.worker_thread.error_signal.connect(self.on_worker_error)
+        self.worker_thread.aborted_signal.connect(self.on_worker_aborted)
         self.worker_thread.loss_signal.connect(self.update_loss_plot)
         self.loss_data = []
         self.worker_thread.start()
@@ -2221,6 +2253,7 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.worker_thread = WorkerThread('calculate', params, settings, data)
         self.worker_thread.finished_signal.connect(self.on_worker_finished)
         self.worker_thread.error_signal.connect(self.on_worker_error)
+        self.worker_thread.aborted_signal.connect(self.on_worker_aborted)
         self.worker_thread.start()
         
         # Disable buttons
@@ -2233,21 +2266,21 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def abort_fit_process(self):
         """
-        Kills the currently running worker thread
+        Requests cooperative cancellation of the currently running worker thread.
         """
         if self.worker_thread and self.worker_thread.isRunning():
-            self.worker_thread.terminate()
-            self.worker_thread.wait()
-            
-        self.menu_abort_fit.setEnabled(False)
-        self.abort_fit_button.setEnabled(False)
-
-        self.menu_start_fit.setEnabled(True)
-        self.menu_calculate_pattern.setEnabled(True)
-        self.calculate_pattern_button.setEnabled(True)
-        self.fit_pattern_button.setEnabled(True)
+            self.worker_thread.request_abort()
+            self.menu_abort_fit.setEnabled(False)
+            self.abort_fit_button.setEnabled(False)
+        else:
+            self.menu_abort_fit.setEnabled(False)
+            self.abort_fit_button.setEnabled(False)
+            self.menu_start_fit.setEnabled(True)
+            self.menu_calculate_pattern.setEnabled(True)
+            self.calculate_pattern_button.setEnabled(True)
+            self.fit_pattern_button.setEnabled(True)
+            self.check_undo_index()
         self.abort_flag = True
-        self.check_undo_index()
 
     def fitting_finished(self, append_to_buffer):
         """
@@ -2492,11 +2525,10 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
     def closeEvent(self, event):
         if hasattr(self, 'worker_thread') and self.worker_thread is not None and self.worker_thread.isRunning():
             print("Stopping worker thread...")
-            # Disconnect signals before terminating
             self._disconnect_worker_signals()
-            
-            self.worker_thread.terminate()
-            self.worker_thread.wait()
+            self.worker_thread.request_abort()
+            if not self.worker_thread.wait(5000):
+                print("Worker thread did not stop cleanly within timeout.")
             
         print("Closing program")
         self.write_config()
